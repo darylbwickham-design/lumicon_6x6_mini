@@ -1,0 +1,78 @@
+# Release Notes — 6×6 Mini with LCD (Lumi-Con) v1.0.0
+
+This is the first public release of the **6×6 Mini with LCD** project: a compact, Lumia-first control deck using a **Pico-scanned 6×6 matrix**, an **ESP8266** bridge, and an **ST7735 TFT**.
+
+---
+
+## What’s included
+
+### Firmware
+- **Pico matrix scanner (6×6)**  
+  - Source: `6x6_test_pico.ino`  
+  - Easy flash: `6x6_test_pico.ino.uf2`
+- **ESP8266 integrated firmware v0.0.4 (ST7735)**  
+  - File: `lumi_con_esp_integrated_0_0_4.ino`  
+  - Includes WiFi provisioning, TFT endpoints, mode selection, and event relay.
+
+### Lumia plugin
+- **Integrated plugin v5.2**
+  - Source: `manifest.json`, `main.js`, `package.json`, `package-lock.json`
+  - Icon: `icon.png`
+
+### 3D print files (STL)
+- `6X6 Front.stl`
+- `6X6 Rear.stl`
+- `connector leg.stl`
+- `controller front with lcd.stl`
+- `electronics rear.stl`
+
+---
+
+## Highlights
+
+### Reliable input → Lumia
+- Sends matrix events `0–71` via `POST /event`:
+  - `0–35` = short press  
+  - `36–71` = long press (key + 36)
+
+### Two reliability modes (selected on boot)
+- **Key 1**: Legacy (HTTP 2xx counts as success)
+- **Key 2**: Confirmed (requires `{ ok:true, seq:<same> }` ACK)
+
+Recommended: **Confirmed** mode with plugin v5.2.
+
+### Plugin v5.2 reboot recovery
+- Fixes the edge-case where device reboots could require restarting the plugin.
+- Improved seq dedupe logic so events resume immediately after a device reboot.
+
+### Faster TFT updates (ESP v0.0.4)
+- Partial redraw system reduces flicker and improves responsiveness while keeping the same UI layout/output.
+
+---
+
+## Quick Start (short version)
+
+1) Flash Pico:
+- Drag `6x6_test_pico.ino.uf2` onto the Pico (BOOTSEL mode)
+
+2) Flash ESP8266:
+- Upload `lumi_con_esp_integrated_0_0_4.ino`
+- IMPORTANT: disconnect Pico GP0 → ESP RX during ESP flashing
+
+3) Join WiFi:
+- Connect to `Lumi-Con-Setup` and configure WiFi at `http://192.168.4.1`
+
+4) Install plugin:
+- Build/install plugin v5.2 (`npm install` → `npx lumia-plugin validate .` → `npx lumia-plugin build ...`)
+- Enable Listener, set port (default 8787)
+
+5) Select mode:
+- On device boot: press Key 1 (Legacy) or Key 2 (Confirmed)
+
+---
+
+## Notes / disclaimer
+This is an experimental community project and is **not affiliated with Lumia**.  
+For feedback or help, tag **AKADAZ** in the Lumia Plugin Discord.
+
+---
