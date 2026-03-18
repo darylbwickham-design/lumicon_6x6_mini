@@ -1,0 +1,211 @@
+# Changelog — Lumi-Con Lumia Plugin (Integrated)
+
+This changelog tracks the evolution of the **integrated Lumi-Con Lumia plugin** from **v1.0.0** through **v5.2**.
+
+Legend:
+- ✅ Added
+- 🔁 Changed
+- 🛠 Fixed
+- ⚠️ Compatibility note
+
+---
+
+## v5.2 (Seq Dedupe Fix) — Current
+🛠 **Fixed seq de-duplication after device reboot**
+- Fixes a case where legitimate events could be ignored after an ESP restart because old sequence tracking was still treated as valid.
+- Improves reliability when the device reconnects or reboots during live use.
+
+✅ **Includes all v5.1 features**
+- Debug toast support
+- Offline detection and device status variables
+- TFT action support
+- Legacy and confirmed event compatibility
+
+⚠️ Compatibility
+- Fully backwards compatible with existing firmware payloads:
+  - Works with legacy `{event:N}`
+  - Works with newer payloads containing `seq`, `deviceId`, `heldMs`, and related metadata
+
+---
+
+## v5.1 (Debug Toasts)
+✅ **Optional debug toasts**
+- Adds optional Lumia toast notifications for diagnostics and support workflows.
+- Toasts are disabled by default for normal use.
+
+✅ **Toast modes**
+- **Important**:
+  - Device connected
+  - Device offline
+- **Verbose**:
+  - Device connected/offline
+  - Key events
+  - TFT actions
+
+✅ **Toast throttling**
+- Reduces notification spam when keys are pressed rapidly or repeated events arrive in a short burst.
+
+🔁 **Improved support UX**
+- Keeps the plugin quiet for everyday users while making diagnostics much easier for builders and testers.
+
+⚠️ Compatibility
+- Fully backwards compatible with both:
+  - Legacy payloads using `{event:N}`
+  - Confirmed/retry-capable payloads using `{event, seq, deviceId, ...}`
+
+---
+
+## v5.0 (Device Status + Offline Detection)
+✅ **Offline detection**
+- Tracks the last event timestamp from the connected device.
+- Marks the device offline when no events arrive within the configured timeout window.
+- Returns to online state automatically when a new event is received.
+
+✅ **Single-line status variable**
+- Adds and maintains `device_status_text` for easy use in overlays, monitoring, and support views.
+- Example values:
+  - `CONNECTED | RSSI -55 | 12s ago`
+  - `OFFLINE`
+
+✅ **Expanded device state variables**
+- Consistently updates:
+  - `device_id`
+  - `device_ip`
+  - `device_last_seen`
+  - `device_rssi`
+  - `device_connected`
+
+🔁 **Minimal setup retained**
+- Keeps the plugin easy to use with sensible defaults such as listener enabled and default port 8787.
+- TFT settings remain optional and mode-dependent.
+
+⚠️ Compatibility
+- Does not require firmware-side changes.
+- Continues to support both newer and older device payloads.
+
+---
+
+## v4.0 (Separate Key Label Pages: Short vs Long)
+✅ **Two independent key label maps**
+- Adds separate settings for:
+  - **Key labels (Short 0–35)**
+  - **Key labels (Long 0–35)**
+- Selects `key_label` from the correct map based on event kind.
+
+🛠 **Improved control-layer clarity**
+- Makes short and long presses behave more like distinct control layers, closer to a real stream deck workflow.
+
+⚠️ Compatibility
+- Preserves fallback support for the older single `keyLabels` field.
+- If dedicated short/long label lists are empty, the legacy shared label list can still be used.
+
+---
+
+## v3.0 (Onboarding + Device Vars + Key Labels)
+✅ **Improved onboarding / minimal setup**
+- Defaults are designed to work immediately in common setups:
+  - Listener enabled by default
+  - Default port 8787
+- Advanced options can be hidden behind “Show advanced settings” where supported.
+
+✅ **Baseline device variables**
+- Tracks device activity and writes useful Lumia variables:
+  - `device_id`
+  - `device_ip`
+  - `device_last_seen`
+  - `device_rssi`
+  - `device_connected`
+  - `seq`
+  - `held_ms` when available
+
+✅ **Key label mapping**
+- Adds **Key labels (0–35)** as a single shared list.
+- Adds `key_label` variable for easier alert text, overlays, and templates.
+
+🔁 **Reliability improvements retained**
+- Continues support for sequence ACK responses and duplicate-event protection introduced in v2.
+
+⚠️ Compatibility
+- Works with:
+  - Legacy `{event:N}`
+  - Newer payloads with `seq`, `deviceId`, and related metadata
+
+---
+
+## v2.0 (Seq ACK + /health + Dedupe)
+✅ **Plugin `/health` endpoint**
+- Adds `GET /health` so the listener can be checked directly.
+
+✅ **Sequence ACK support**
+- On `POST /event`, replies with JSON confirmation when a sequence number is provided:
+  - `{ ok: true, seq: <echo> }`
+- Enables confirmed delivery mode on compatible firmware.
+
+✅ **Duplicate-event protection**
+- Deduplicates repeated events using `(deviceId, seq)` when available.
+- Prevents double-triggering if the ESP retries an event after a timeout or missed response.
+
+⚠️ Compatibility
+- Still accepts legacy `{event:N}` payloads.
+- If `seq` is absent, the plugin behaves like the earlier version but with safer response handling.
+
+---
+
+## v1.0 (Initial Integrated Plugin)
+✅ **First combined plugin**
+- Introduces a single integrated plugin that:
+  - Listens for ESP button events at `POST /event`
+  - Triggers two alert groups:
+    - Short press
+    - Long press
+  - Supports 36 key variations for each group
+  - Provides TFT actions for device display control
+
+✅ **TFT actions**
+- Display Message
+- Status Message
+- Clear Screen
+
+✅ **Legacy display compatibility**
+- Supports legacy TFT endpoints:
+  - `/msg`
+  - `/status`
+  - `/clear`
+- Includes optional support for `POST /ui` for newer display workflows and future expansion.
+
+⚠️ Compatibility
+- Designed around the original ESP event scheme:
+  - `event: 0..35` = short press
+  - `event: 36..71` = long press (`key + 36`)
+
+---
+
+# Between Versions Summary
+
+- **v1 → v2**
+  - Added plugin health checks, sequence ACK responses, and duplicate-event protection so confirmed delivery became possible without double-triggering.
+
+- **v2 → v3**
+  - Improved onboarding, added useful device variables, and introduced key labels for cleaner alerting and easier setup.
+
+- **v3 → v4**
+  - Split key labels into separate short-press and long-press maps for a clearer two-layer control model.
+
+- **v4 → v5**
+  - Added offline detection and `device_status_text` for cleaner overlays, support visibility, and device-state reporting.
+
+- **v5 → v5.1**
+  - Added optional debug toasts with throttling for diagnostics and support workflows.
+
+- **v5.1 → v5.2**
+  - Fixed reboot-related sequence dedupe handling so valid events are no longer suppressed after device restart.
+
+---
+
+# Notes
+
+- **v5.2** includes all v5.1 functionality.
+- v5.2 is primarily a **reliability / maintenance release**, not a feature reset.
+- The plugin continues to support both:
+  - legacy event-only firmware
+  - newer confirmed-delivery firmware with `seq` and `deviceId`

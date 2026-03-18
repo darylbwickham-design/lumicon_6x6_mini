@@ -1,0 +1,194 @@
+# Firmware Changelog — Lumi-Con ESP8266 Pet Firmware
+
+This changelog tracks the uploaded ESP8266 firmware branch from the last pre-pet integrated base into the pet firmware line:
+
+- **v0.0.5** = `lumi_con_esp_integrated_0_0_5_fixed.ino`
+- **v0.1.1** = `lumi_con_esp_integrated_0_1_1.ino`
+- **v0.1.2** = `lumi_con_esp_integrated_0_1_2.ino`
+- **v0.1.3** = `lumi_con_esp_integrated_0_1_3.ino`
+- **v0.2.0** = `lumi_con_esp_integrated_0_2_0.ino`
+- **v0.2.1** = `lumi_con_esp_integrated_0_2_1.ino`
+- **v0.2.2** = `lumi_con_esp_integrated_0_2_2.ino`
+- **v0.2.3** = `lumi_con_esp_integrated_0_2_3.ino`
+
+---
+
+## v0.2.3 (Panel Color Correction)
+**Key features**
+- Corrects panel colour rendering using panel-specific RGB565 encoding.
+- Replaces generic ST77XX colour assumptions with panel-corrected values.
+- Updates the shared `rgb565(...)` helper so existing drawing code keeps working while colours render properly on the target display.
+
+**Why this matters**
+- Fixes red/blue channel mismatch on affected screens.
+- Makes UI colours, warning states, and sprite colours appear as intended.
+
+**Compatibility**
+- Endpoints unchanged:
+  - `/msg`
+  - `/status`
+  - `/clear`
+  - `/ui`
+  - `/health`
+  - `/pet`
+- Behaviour unchanged apart from corrected colour output.
+
+---
+
+## v0.2.2 (Chat Mode + noPet Debug Mode)
+**Key features**
+- Adds **boot-time mode selection** using Pico keys:
+  - **Hold key 0** at boot: reset Wi-Fi settings and restart
+  - **Hold key 1** at boot: **Chat mode**
+  - **Hold key 2** at boot: **noPet Debug mode**
+- Introduces a clearer split between:
+  - **Pet mode**
+  - **Chat-only Lumia message mode**
+  - **noPet debug/testing mode**
+- Keeps Lumia message and status handling available even when pet gameplay is not active.
+
+**Why this matters**
+- Makes the firmware more flexible for testing, display-only usage, and debugging without needing separate builds.
+
+**Compatibility**
+- Existing display and health endpoints retained.
+- `/pet` remains available for pet-enabled operation.
+
+---
+
+## v0.2.1 (Boot Key Control + Pet Disable Until Restart)
+**Key features**
+- Adds **boot key hold handling**:
+  - **Hold key 0** at boot for Wi-Fi reset
+  - **Hold key 1** at boot to disable pet mode until restart
+- Introduces `petModeEnabled` state into runtime and status reporting.
+- Adds a dedicated **PET MODE OFF** message page when pet mode is disabled.
+- Prevents pet actions, pet simulation, and pet transition processing while pet mode is off.
+- `/health` and pet status responses now expose whether pet mode is enabled.
+- `/pet` returns a proper error response when pet mode has been disabled for the current session.
+
+**Why this matters**
+- Lets the device act as a Lumia display/message endpoint without pet gameplay running in the background.
+- Makes boot behaviour more intentional and support-friendly.
+
+**Compatibility**
+- Existing messaging endpoints remain unchanged.
+- Adds `petModeEnabled` to JSON responses.
+
+---
+
+## v0.2.0 (Lumia-Only Pet Control Revision)
+**Key features**
+- Removes direct ESP gameplay buttons from the design.
+- Moves pet interaction to **Lumia-only control** through the `/pet` endpoint.
+- Reworks message handling so Lumia text is shown on a **dedicated message page** instead of temporarily sharing the old integrated header flow.
+- Adds a more deliberate pet UI layout with footer and message-page behaviour.
+- Keeps pet state persistence, transition queuing, telemetry posting, and TFT rendering.
+
+**Why this matters**
+- This is the point where the firmware becomes more clearly a **networked pet appliance** rather than a hybrid local-button prototype.
+- The UX becomes cleaner for Lumia-driven interaction.
+
+**Compatibility**
+- Core endpoints retained:
+  - `/msg`
+  - `/status`
+  - `/clear`
+  - `/ui`
+  - `/health`
+  - `/pet`
+- No longer depends on extra ESP-side pet buttons.
+
+---
+
+## v0.1.3 (Fast Bitmap Sprite Rendering)
+**Key features**
+- Replaces heavier primitive-drawn creature rendering with **tiny 1-bit bitmap sprite assets in PROGMEM**.
+- Gives each growth stage **2 lightweight animation frames**.
+- Speeds up animation by reducing `ANIM_TICK_MS` from the slower earlier value to a faster refresh cadence.
+- Redraws only the sprite box and related dirty regions when visible state changes.
+
+**Why this matters**
+- Significantly improves perceived animation smoothness on ESP8266 + ST7735 hardware.
+- Cuts SPI workload compared with rebuilding the creature from drawing primitives every tick.
+
+**Compatibility**
+- Pet gameplay logic and endpoints remain the same.
+- Visual/rendering improvement release.
+
+---
+
+## v0.1.2 (Dirty Redraw Optimisation for Pet UI)
+**Key features**
+- Adds cached redraw logic for:
+  - stat bars
+  - sprite layers
+  - poop strip
+- Introduces dedicated pet-area layout constants so redraw regions are easier to control and tune.
+- Changes bar rendering so bars redraw only when value or colour changes.
+- Splits sprite rendering into smaller dirty regions instead of repainting the full creature area every frame.
+
+**Why this matters**
+- Reduces flicker.
+- Improves TFT responsiveness.
+- Creates the rendering foundation that later made the bitmap-sprite optimisation possible.
+
+**Compatibility**
+- Behaviour and feature set stay broadly the same as v0.1.1.
+- This is primarily a performance and redraw-efficiency update.
+
+---
+
+## v0.1.1 (First ESP Pet Firmware Branch)
+**Key features**
+- Introduces the **pet firmware architecture** on top of the ESP8266 + Pico + TFT setup.
+- Adds persistent pet state with **EEPROM save/load** and **CRC validation**.
+- Adds `/pet` control and status endpoint.
+- Adds pet simulation systems such as:
+  - age/stage progression
+  - hunger/happiness/cleanliness style stat management
+  - sickness/sleep/death handling
+  - pet transition/event queueing
+- Adds TFT pet UI with HUD, bars, sprite rendering, poop rendering, and message pages.
+- Supports Lumia-linked pet event posting and ACK-aware network behaviour.
+- Includes **2 direct SPST buttons on the ESP** for local pet gameplay in this revision.
+
+**Why this matters**
+- This is the major branch point where the firmware evolves from “integrated key/display controller” into a real pet-style firmware platform.
+
+**Compatibility**
+- Retains network/display foundation from the earlier integrated firmware.
+- Adds `/pet` alongside the existing message/status/display endpoints.
+
+---
+
+## v0.0.5 (Integrated Base Before Pet Branch)
+**Key features**
+- Two-line header UI with prompt/transient line plus status/last-key line.
+- Confirmed vs legacy event-send behaviour already established.
+- Partial redraw optimisation already in place for header/chat regions.
+- Existing display/control contract remains intact:
+  - `/msg`
+  - `/status`
+  - `/clear`
+  - `/ui`
+  - `/health`
+- Pico UART event handling and Lumia event posting already working.
+
+**Why this matters**
+- This is the practical base the pet firmware branch grows out of.
+
+**Compatibility**
+- Stable integrated firmware base before the pet-specific redesign begins.
+
+---
+
+# Upgrade Summary
+
+- **v0.0.5 → v0.1.1:** branched from integrated controller firmware into full pet firmware with persistence, `/pet`, gameplay state, and TFT pet UI
+- **v0.1.1 → v0.1.2:** improved redraw efficiency with dirty-region updates for bars, sprite layers, and UI sections
+- **v0.1.2 → v0.1.3:** switched to lightweight bitmap sprites and faster animation for much better refresh performance
+- **v0.1.3 → v0.2.0:** removed local ESP gameplay buttons and made pet interaction Lumia-first through `/pet`
+- **v0.2.0 → v0.2.1:** added boot-key handling for Wi-Fi reset and pet-disable mode, with runtime `petModeEnabled` reporting
+- **v0.2.1 → v0.2.2:** added chat mode and noPet debug mode as explicit boot options
+- **v0.2.2 → v0.2.3:** corrected TFT colour rendering for the target panel using panel-specific RGB565 mapping
