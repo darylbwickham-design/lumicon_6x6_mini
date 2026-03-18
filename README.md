@@ -1,26 +1,53 @@
-# 6×6 Mini with LCD (Lumi-Con) — v1.0.0
+# Lumi-Con 6×6 Matrix Mini with LCD — v1.0.1
 
-A compact **Lumia-first** 6×6 control deck using:
-- **Raspberry Pi Pico (RP2040)** for 6×6 matrix scanning (UART packets)
-- **ESP8266** for Wi‑Fi + HTTP + **ST7735 TFT** display + event relay to Lumia
-- **Lumia plugin (v5.2)** for receiving events and triggering alerts + sending TFT text
+A compact **Lumia-first** control deck built around a **6×6 matrix**, a **Raspberry Pi Pico**, an **ESP8266**, and a small **ST7735 TFT** display.
 
-This repository is the “mini 6x6” device project (separate from the main Lumi‑Con).
+This repository represents the **v1.x.x generation of the Lumi-Con 6×6 Matrix Mini project as a whole**.
+
+The project is split into three practical parts:
+
+- **Pico firmware** for matrix scanning
+- **ESP8266 firmware** for Wi-Fi, HTTP, TFT display, and Lumia relay
+- **Lumia plugin** for event intake, alert triggering, and TFT text actions
+
+This mini device project is separate from the larger main Lumi-Con project.
 
 ---
 
-## What it does
+## Recommended version combination
 
-### Inputs (device → Lumia)
-- Pico scans 36 keys and sends UART packets to the ESP8266.
-- ESP8266 converts press/release into:
+For most users, the recommended and most stable setup is:
+
+- **Project generation:** **Lumi-Con 6×6 Matrix Mini v1.x.x**
+- **Pico firmware:** `6x6_test_pico.ino` / `6x6_test_pico.ino.uf2`
+- **ESP8266 firmware:** `lumi_con_esp_integrated_0_0_5_fixed.ino`
+- **Lumia plugin:** **v5.2**
+
+### Lumia Marketplace naming note
+The recommended plugin version is **v5.2**, but on the **Lumia Marketplace** it may appear as **1.0.x**.
+
+### Important
+- The **test Pico firmware has not changed**
+- Later ESP firmware versions such as `0_1_x` and `0_2_x` are **still in development**
+- Unless you are intentionally testing newer development builds, most users should stay on:
+  - **ESP 0_0_5**
+  - **Plugin v5.2**
+
+---
+
+## What the device does
+
+### Inputs: device → Lumia
+- The **Pico** scans all 36 keys and sends UART packets to the ESP8266
+- The **ESP8266** converts those into Lumia-facing event numbers:
   - **Short press**: events `0–35`
-  - **Long press**: events `36–71` (key + 36)
-- ESP8266 sends events to the Lumia plugin:
+  - **Long press**: events `36–71` (`key + 36`)
+- The ESP8266 then sends events to the Lumia plugin:
   - `POST http://<PC_IP>:<PORT>/event`
 
-### Display (Lumia → device)
-The ESP8266 exposes TFT endpoints:
+### Display: Lumia → device
+The ESP8266 exposes TFT endpoints so Lumia can push text and status updates to the screen:
+
 - `GET /msg?t=...`
 - `GET /status?t=...`
 - `GET /clear`
@@ -29,19 +56,43 @@ The ESP8266 exposes TFT endpoints:
 
 ---
 
-## Repo contents
+## Repository contents
 
 ### Firmware
-- Pico: `6x6_test_pico.ino` (source) and `6x6_test_pico.ino.uf2` (easy flash)
-- ESP8266: `lumi_con_esp_integrated_0_0_4.ino` (ST7735 + partial redraw performance)
 
-### Lumia plugin (v5.2)
-- `manifest.json`
-- `main.js`
-- `package.json` / `package-lock.json`
-- `icon.png`
+#### Pico
+- `6x6_test_pico.ino`  
+  Source version of the current test Pico firmware
+- `6x6_test_pico.ino.uf2`  
+  Easy drag-and-drop flash file
 
-### 3D print files (STL)
+#### ESP8266
+- `lumi_con_esp_integrated_0_0_5_fixed.ino`  
+  **Recommended stable ESP firmware**
+
+### Additional ESP development builds
+Later ESP builds may also be present in the repository for development and testing, for example:
+
+- `lumi_con_esp_integrated_0_1_1.ino`
+- `lumi_con_esp_integrated_0_1_2.ino`
+- `lumi_con_esp_integrated_0_1_3.ino`
+- `lumi_con_esp_integrated_0_2_0.ino`
+- `lumi_con_esp_integrated_0_2_1.ino`
+- `lumi_con_esp_integrated_0_2_2.ino`
+- `lumi_con_esp_integrated_0_2_3.ino`
+
+These later ESP builds are **development branch firmware** and are not the recommended starting point for most users.
+
+### Lumia plugin files
+- `6x6_matrix_mini_v1_0_0.lumiaplugin`
+- `6x6_matrix_mini_v1_0_1.lumiaplugin`
+- `6x6_matrix_mini.lumiaplugin`
+
+Recommended plugin release:
+- **Plugin v5.2**
+- May appear as **1.0.x** on the Lumia Marketplace
+
+### 3D print files
 - `6X6 Front.stl`
 - `6X6 Rear.stl`
 - `connector leg.stl`
@@ -50,12 +101,34 @@ The ESP8266 exposes TFT endpoints:
 
 ---
 
+## Hardware overview
+
+### Pico ↔ 6×6 matrix
+The Pico scans the key matrix.
+
+### Pico → ESP8266
+The Pico sends UART key data to the ESP.
+
+### ESP8266 → TFT + Lumia
+The ESP handles:
+
+- Wi-Fi connection
+- HTTP endpoints
+- TFT screen drawing
+- Sending events to the Lumia plugin
+- Receiving message/status/UI actions for the TFT
+
+---
+
 ## Hardware wiring
 
-IMPORTANT (ESP flashing): disconnect **Pico GP0 (TX) → ESP RX (GPIO3)** while uploading firmware to the ESP8266.
+### Important for ESP flashing
+Disconnect **Pico GP0 (TX) → ESP RX (GPIO3)** while uploading firmware to the ESP8266.
 
-### A) Pico ↔ 6×6 matrix (matches `6x6_test_pico.ino`)
-Rows (inputs w/ pullups):
+### A) Pico ↔ 6×6 matrix
+Matches `6x6_test_pico.ino`
+
+#### Rows (inputs with pullups)
 - R0 → GP12
 - R1 → GP1
 - R2 → GP2
@@ -63,7 +136,7 @@ Rows (inputs w/ pullups):
 - R4 → GP4
 - R5 → GP5
 
-Cols (outputs):
+#### Columns (outputs)
 - C0 → GP6
 - C1 → GP7
 - C2 → GP8
@@ -78,6 +151,7 @@ Cols (outputs):
 
 ### C) ESP8266 → ST7735 TFT (SPI)
 Typical ESP8266 hardware SPI wiring:
+
 - TFT VCC  → 3V3
 - TFT GND  → GND
 - TFT SCK  → D5 (GPIO14)
@@ -85,92 +159,146 @@ Typical ESP8266 hardware SPI wiring:
 - TFT CS   → D2 (GPIO4)
 - TFT DC   → D1 (GPIO5)
 
-Recommended reset wiring:
-- TFT RST → **ESP RST** (hardware reset pin)
+#### Recommended reset wiring
+- TFT RST → **ESP RST**
 
-Note:
-- The ESP firmware uses `TFT_RST = -1` (RST not controlled by a GPIO). Wiring TFT RST to ESP RST is the most reliable option.
-
----
-
-## Arduino IDE setup (one-time)
-
-1) Install Arduino IDE:
-- https://www.arduino.cc/en/software
-
-2) Add board manager URLs:
-Arduino IDE → File → Preferences → Additional Boards Manager URLs
-
-Paste:
-- ESP8266:
-  - http://arduino.esp8266.com/stable/package_esp8266com_index.json
-- Pico / RP2040 (Earle Philhower):
-  - https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
-
-3) Boards Manager installs:
-Arduino IDE → Tools → Board → Boards Manager
-- ESP8266 by ESP8266 Community
-- Raspberry Pi Pico/RP2040 (Earle Philhower)
+#### Note
+The recommended stable ESP firmware uses `TFT_RST = -1`, meaning TFT reset is not driven from a GPIO in the sketch. Wiring TFT RST directly to ESP RST is the simplest and most reliable setup.
 
 ---
 
-## Flash the firmware
+## Arduino IDE setup
 
-### 1) Pico (easy method: UF2)
-1) Hold BOOTSEL while plugging Pico into USB
-2) Pico appears as a USB drive
-3) Drag-drop:
-- `6x6_test_pico.ino.uf2`
+### 1) Install Arduino IDE
+Install Arduino IDE from:
 
-### 2) ESP8266
-1) Disconnect Pico GP0 → ESP RX (GPIO3)
-2) Upload `lumi_con_esp_integrated_0_0_4.ino` from Arduino IDE
-3) Reconnect Pico GP0 → ESP RX (GPIO3)
+`https://www.arduino.cc/en/software`
 
-ESP first-time Wi‑Fi (WiFiManager):
-1) Power ESP → AP appears: `Lumi-Con-Setup`
-2) Connect to `Lumi-Con-Setup`
-3) Open: http://192.168.4.1
-4) Select home Wi‑Fi + password → Save
-5) ESP reboots → TFT shows IP
+### 2) Add board manager URLs
+In Arduino IDE, open:
+
+**File → Preferences → Additional Boards Manager URLs**
+
+Add:
+
+#### ESP8266
+`http://arduino.esp8266.com/stable/package_esp8266com_index.json`
+
+#### Pico / RP2040 (Earle Philhower)
+`https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json`
+
+### 3) Install board packages
+Open:
+
+**Tools → Board → Boards Manager**
+
+Install:
+
+- **ESP8266 by ESP8266 Community**
+- **Raspberry Pi Pico/RP2040 by Earle Philhower**
+
+### 4) Install required libraries
+
+#### Required for the ESP8266 firmware
+Install these through **Sketch → Include Library → Manage Libraries**:
+
+- **WiFiManager** by tzapu / tablatronix
+- **Adafruit GFX Library** by Adafruit
+- **Adafruit ST7735 and ST7789 Library** by Adafruit
+
+These cover the external libraries used by the ESP firmware.
+
+#### Included with the ESP8266 board package
+These are used by the ESP sketch but normally come with the ESP8266 core, so you do **not** usually install them separately:
+
+- `ESP8266WiFi`
+- `ESP8266WebServer`
+- `ESP8266HTTPClient`
+- `WiFiClient`
+- `EEPROM`
+- `SPI`
+
+#### Pico library note
+The current `6x6_test_pico.ino` uses the RP2040 core and standard Arduino functionality only.
+It does **not** require any extra third-party Arduino libraries beyond the installed **Raspberry Pi Pico/RP2040** board package.
 
 ---
 
-## Build + install the Lumia plugin (v5.2)
+## Flashing the firmware
 
-Open a terminal in the plugin folder (where `package.json` is):
+### 1) Flash the Pico
+The easiest method is UF2 drag-and-drop flashing.
 
-Build (Windows):
+1. Hold **BOOTSEL** while plugging the Pico into USB
+2. The Pico appears as a USB drive
+3. Drag and drop:
+   - `6x6_test_pico.ino.uf2`
+
+### 2) Flash the ESP8266
+1. Disconnect **Pico GP0 → ESP RX (GPIO3)**
+2. Upload:
+   - `lumi_con_esp_integrated_0_0_5_fixed.ino`
+3. Reconnect **Pico GP0 → ESP RX (GPIO3)**
+
+---
+
+## First-time ESP Wi-Fi setup
+
+The ESP firmware uses **WiFiManager** for first-time network setup.
+
+1. Power the ESP
+2. A setup access point appears:
+   - `Lumi-Con-Setup`
+3. Connect to that AP
+4. Open:
+   - `http://192.168.4.1`
+5. Select your Wi-Fi network and enter the password
+6. Save
+7. The ESP reboots and the TFT shows its IP address
+
+---
+
+## Lumia plugin install
+
+Open a terminal in the plugin folder, where `package.json` is located.
+
+### Build on Windows
 ```bash
 npm install
 npx lumia-plugin validate .
 npx lumia-plugin build . --out .\lumi_con_bridge_integrated_v5_2.lumiaplugin
 ```
 
-Install into Lumia:
-- Lumia → Configuration → Plugins → Installed → Install Manually
-- Select `lumi_con_bridge_integrated_v5_2.lumiaplugin`
+### Install into Lumia
+- Open **Lumia**
+- Go to **Configuration → Plugins → Installed → Install Manually**
+- Select:
+  - `lumi_con_bridge_integrated_v5_2.lumiaplugin`
+
+### Marketplace note
+The recommended plugin is **v5.2**, but depending on where you view it, it may be labelled as **1.0.x** on the Lumia Marketplace.
 
 ---
 
-## Configure the plugin (minimal)
+## Plugin configuration
 
 In Lumia plugin settings:
-- Enable Listener = ON
-- Listen Port = 8787 (or any free port)
-- Shared Secret = blank (or set one)
 
-Optional (for TFT actions):
-- ESP Base URL = `http://<ESP_IP>`
+- **Enable Listener** = ON
+- **Listen Port** = `8787`
+- **Shared Secret** = blank, or set one if you want one
 
-Optional (debug):
-- Enable Debug Toasts = ON
+### Optional for TFT actions
+- **ESP Base URL** = `http://<ESP_IP>`
+
+### Optional for debugging
+- **Enable Debug Toasts** = ON
 
 ---
 
-## Configure the ESP firmware (PC IP + port)
+## ESP firmware configuration
 
-Edit these constants in `lumi_con_esp_integrated_0_0_4.ino` to match your PC and plugin settings:
+Edit these constants in `lumi_con_esp_integrated_0_0_5_fixed.ino` so they match your PC and Lumia plugin settings:
 
 ```cpp
 const char* PLUGIN_HOST = "192.168.1.87"; // your PC IP
@@ -180,46 +308,108 @@ const char* PLUGIN_SECRET = "";           // same as Shared Secret (or blank)
 
 ---
 
-## Mode selection (on boot)
+## Mode selection on boot
 
-After Wi‑Fi connects and the IP is shown, the ESP waits for a mode choice using the matrix keys:
+After Wi-Fi connects and the IP is shown, the ESP waits for a mode choice using the matrix keys:
 
-- Press **Key 1** → LEGACY mode (HTTP 2xx counts as success)
-- Press **Key 2** → CONFIRMED mode (requires `{ ok:true, seq:<same> }` ACK)
+- Press **Key 1** → **LEGACY mode**
+  - Any HTTP `2xx` response counts as success
+- Press **Key 2** → **CONFIRMED mode**
+  - Requires `{ ok:true, seq:<same> }` ACK from the plugin
 
-Recommended:
-- Use CONFIRMED mode with plugin v5.2 (best reliability).
+### Recommended
+Use **CONFIRMED mode** with **plugin v5.2** for the most reliable behaviour.
 
 ---
 
-## Quick tests
+## Quick test URLs
 
-### Check device endpoints
+### Check ESP endpoints
 - `http://<ESP_IP>/health`
 - `http://<ESP_IP>/msg?t=Hello`
 - `http://<ESP_IP>/status?t=OK`
 - `http://<ESP_IP>/clear`
 
-### Check plugin listener health
+### Check plugin listener
 - `http://<PC_IP>:8787/health`
 
 ---
 
 ## Troubleshooting
 
-ESP upload fails:
-- Disconnect Pico GP0 (TX) → ESP RX (GPIO3) during ESP flashing.
+### Missing library errors in Arduino IDE
+If the ESP sketch fails with missing library errors, make sure these are installed:
 
-TFT is white / blank:
-- Ensure TFT RST is wired to ESP RST.
-- If colors are wrong, try a different ST7735 tab in the ESP firmware:
-  - INITR_GREENTAB / INITR_REDTAB / INITR_BLACKTAB
+- **WiFiManager**
+- **Adafruit GFX Library**
+- **Adafruit ST7735 and ST7789 Library**
 
-Lumia alerts don’t fire:
-- Confirm ESP `PLUGIN_HOST` is your PC IP
-- Confirm ESP `PLUGIN_PORT` matches plugin Listen Port
-- If using Shared Secret, both ends must match exactly
-- PC and ESP must be on the same LAN
+If the Pico sketch fails, double-check that the **Raspberry Pi Pico/RP2040** board package is installed correctly.
+
+### ESP upload fails
+Disconnect **Pico GP0 (TX) → ESP RX (GPIO3)** while flashing the ESP8266.
+
+### TFT stays white or blank
+- Check that **TFT RST** is wired to **ESP RST**
+- If colours are wrong, try a different ST7735 init tab in the ESP firmware:
+  - `INITR_GREENTAB`
+  - `INITR_REDTAB`
+  - `INITR_BLACKTAB`
+
+### Lumia alerts do not fire
+- Check that ESP `PLUGIN_HOST` matches your PC IP
+- Check that ESP `PLUGIN_PORT` matches the plugin listen port
+- If you use a shared secret, it must match on both sides
+- Make sure the PC and ESP are on the same LAN
+
+### Plugin version naming looks strange
+- The recommended plugin release is **v5.2**
+- On the Lumia Marketplace it may be shown as **1.0.x**
+- This README uses the internal project version history for clarity
+
+---
+
+## Development branch note
+
+The later ESP firmware builds in this repository belong to the ongoing development branch.
+
+That means:
+
+- **0_0_5** is the recommended firmware for general users
+- **0_1_x** and **0_2_x** are development builds
+- The **test Pico firmware has not changed** alongside those later ESP revisions
+
+If you are building the device for normal use, start with:
+
+- **Pico:** `6x6_test_pico.ino.uf2`
+- **ESP:** `lumi_con_esp_integrated_0_0_5_fixed.ino`
+- **Plugin:** **v5.2**
+
+---
+
+## Versioning summary
+
+To avoid confusion, there are **two different version ideas** in play:
+
+### Whole project version
+The **Lumi-Con 6×6 Matrix Mini project as a whole** is in the **v1.x.x generation**.
+
+### Component versions
+The individual parts have their own version history:
+
+- **ESP firmware:** recommended stable build is `0_0_5`
+- **Plugin:** recommended release is `v5.2`
+- **Marketplace plugin label:** may appear as `1.0.x`
+- **Test Pico firmware:** unchanged in this release path
+
+So in practice:
+
+- **Project generation:** `v1.x.x`
+- **Recommended ESP:** `0_0_5`
+- **Recommended plugin:** `v5.2`
+- **Marketplace label:** `1.0.x`
+
+A tiny version hydra, but a tame one.
 
 ---
 
