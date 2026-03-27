@@ -20,18 +20,13 @@ For most users, the recommended and most stable setup is:
 
 - **Project generation:** **Lumi-Con 6×6 Matrix Mini v1.x.x**
 - **Pico firmware:** `6x6_test_pico.ino` / `6x6_test_pico.ino.uf2`
-- **ESP8266 firmware:** `lumi_con_esp_integrated_0_0_5_fixed.ino`
-- **Lumia plugin:** **v5.2**
+- **ESP8266 firmware:** `lumi_con_esp_integrated_3_0_0.ino`
+- **Lumia plugin:** **1_x_x**
 
 ### Lumia Marketplace naming note
 The recommended plugin version is **v5.2**, but on the **Lumia Marketplace** it may appear as **1.0.x**.
 
-### Important
-- The **test Pico firmware has not changed**
-- Later ESP firmware versions such as `0_1_x` and `0_2_x` are **still in development**
-- Unless you are intentionally testing newer development builds, most users should stay on:
-  - **ESP 0_0_5**
-  - **Plugin v5.2**
+
 
 ---
 
@@ -373,23 +368,17 @@ Disconnect **Pico GP0 (TX) → ESP RX (GPIO3)** while flashing the ESP8266.
 
 The later ESP firmware builds in this repository belong to the ongoing development branch.
 
-That means:
-
-- **0_0_5** is the recommended firmware for general users
-- **0_1_x** and **0_2_x** are development builds
-- The **test Pico firmware has not changed** alongside those later ESP revisions
 
 If you are building the device for normal use, start with:
 
 - **Pico:** `6x6_test_pico.ino.uf2`
-- **ESP:** `lumi_con_esp_integrated_0_0_5_fixed.ino`
-- **Plugin:** **v5.2**
+- **ESP:** `lumi_con_esp_integrated_3_0_0.ino`
+- **Plugin:** **v1.1.2**
 
 ---
 
 ## Versioning summary
 
-To avoid confusion, there are **two different version ideas** in play:
 
 ### Whole project version
 The **Lumi-Con 6×6 Matrix Mini project as a whole** is in the **v1.x.x generation**.
@@ -397,9 +386,9 @@ The **Lumi-Con 6×6 Matrix Mini project as a whole** is in the **v1.x.x generati
 ### Component versions
 The individual parts have their own version history:
 
-- **ESP firmware:** recommended stable build is `0_0_5`
-- **Plugin:** recommended release is `v5.2`
-- **Marketplace plugin label:** may appear as `1.0.x`
+- **ESP firmware:** recommended stable build is `3_0_0`
+- **Plugin:** recommended release is `v1.x.x`
+- **Marketplace plugin label:** may appear as `1.x.x`
 - **Test Pico firmware:** unchanged in this release path
 
 So in practice:
@@ -409,7 +398,7 @@ So in practice:
 - **Recommended plugin:** `v5.2`
 - **Marketplace label:** `1.0.x`
 
-A tiny version hydra, but a tame one.
+
 
 ---
 
