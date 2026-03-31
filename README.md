@@ -1,4 +1,4 @@
-# Lumi-Con 6×6 Matrix Mini with LCD — v1.0.1
+# Lumi-Con 6×6 Matrix Mini with LCD — v1.0.2
 
 A compact **Lumia-first** control deck built around a **6×6 matrix**, a **Raspberry Pi Pico**, an **ESP8266**, and a small **ST7735 TFT** display.
 
@@ -20,7 +20,7 @@ For most users, the recommended and most stable setup is:
 
 - **Project generation:** **Lumi-Con 6×6 Matrix Mini v1.x.x**
 - **Pico firmware:** `6x6_test_pico.ino` / `6x6_test_pico.ino.uf2`
-- **ESP8266 firmware:** `lumi_con_esp_integrated_3_0_0.ino`
+- **ESP8266 firmware:** `lumi_con_esp_integrated_0_3_6.ino`
 - **Lumia plugin:** **1_x_x**
 
 ### Lumia Marketplace naming note
@@ -62,7 +62,7 @@ The ESP8266 exposes TFT endpoints so Lumia can push text and status updates to t
   Easy drag-and-drop flash file
 
 #### ESP8266
-- `lumi_con_esp_integrated_0_0_5_fixed.ino`  
+- `lumi_con_esp_integrated_0_3_6_fixed.ino`  
   **Recommended stable ESP firmware**
 
 ### Additional ESP development builds
@@ -232,7 +232,7 @@ The easiest method is UF2 drag-and-drop flashing.
 ### 2) Flash the ESP8266
 1. Disconnect **Pico GP0 → ESP RX (GPIO3)**
 2. Upload:
-   - `lumi_con_esp_integrated_0_0_5_fixed.ino`
+   - `lumi_con_esp_integrated_0_3_6_fixed.ino`
 3. Reconnect **Pico GP0 → ESP RX (GPIO3)**
 
 ---
@@ -293,7 +293,7 @@ In Lumia plugin settings:
 
 ## ESP firmware configuration
 
-Edit these constants in `lumi_con_esp_integrated_0_0_5_fixed.ino` so they match your PC and Lumia plugin settings:
+Edit these constants in `lumi_con_esp_integrated_0_3_6.ino` so they match your PC and Lumia plugin settings:
 
 ```cpp
 const char* PLUGIN_HOST = "192.168.1.87"; // your PC IP
@@ -307,13 +307,10 @@ const char* PLUGIN_SECRET = "";           // same as Shared Secret (or blank)
 
 After Wi-Fi connects and the IP is shown, the ESP waits for a mode choice using the matrix keys:
 
-- Press **Key 1** → **LEGACY mode**
-  - Any HTTP `2xx` response counts as success
-- Press **Key 2** → **CONFIRMED mode**
-  - Requires `{ ok:true, seq:<same> }` ACK from the plugin
-
-### Recommended
-Use **CONFIRMED mode** with **plugin v5.2** for the most reliable behaviour.
+- Press **Key 0** → **factory reset**
+- Press **Key 2** → **Debug mode**
+- Press **Key 35** → **E-PET mode**
+ 
 
 ---
 
@@ -372,32 +369,8 @@ The later ESP firmware builds in this repository belong to the ongoing developme
 If you are building the device for normal use, start with:
 
 - **Pico:** `6x6_test_pico.ino.uf2`
-- **ESP:** `lumi_con_esp_integrated_3_0_0.ino`
+- **ESP:** `lumi_con_esp_integrated_0_3_6.ino`
 - **Plugin:** **v1.1.2**
-
----
-
-## Versioning summary
-
-
-### Whole project version
-The **Lumi-Con 6×6 Matrix Mini project as a whole** is in the **v1.x.x generation**.
-
-### Component versions
-The individual parts have their own version history:
-
-- **ESP firmware:** recommended stable build is `3_0_0`
-- **Plugin:** recommended release is `v1.x.x`
-- **Marketplace plugin label:** may appear as `1.x.x`
-- **Test Pico firmware:** unchanged in this release path
-
-So in practice:
-
-- **Project generation:** `v1.x.x`
-- **Recommended ESP:** `0_0_5`
-- **Recommended plugin:** `v5.2`
-- **Marketplace label:** `1.0.x`
-
 
 
 ---
