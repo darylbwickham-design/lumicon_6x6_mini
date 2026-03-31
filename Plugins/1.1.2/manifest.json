@@ -1,0 +1,547 @@
+{
+  "id": "matrix_6x6_mini",
+  "name": "6x6 matrix mini",
+  "version": "1.1.2",
+  "author": "You",
+  "description": "36 key open source stream controller with integrated LCD, chat, alerts, and virtual pet support.",
+  "license": "MIT",
+  "lumiaVersion": "^9.0.0",
+  "category": "devices",
+  "icon": "./icon.png",
+  "config": {
+    "settings_tutorial": "./settings_tutorial.md",
+    "actions_tutorial": "./actions_tutorial.md",
+    "settings": [
+      {
+        "key": "enabled",
+        "label": "Enable Listener",
+        "type": "toggle",
+        "defaultValue": true,
+        "helperText": "Turns the HTTP listener on/off.",
+        "section": "Listener",
+        "sectionOrder": 1
+      },
+      {
+        "key": "listenPort",
+        "label": "Listen Port",
+        "type": "number",
+        "defaultValue": 8787,
+        "helperText": "ESP will POST events to http://<this-pc-ip>:<port>/event",
+        "section": "Listener",
+        "sectionOrder": 1
+      },
+      {
+        "key": "secret",
+        "label": "Shared Secret (Optional)",
+        "type": "password",
+        "defaultValue": "",
+        "helperText": "If set, ESP must send header X-Matrix-Secret matching this value.",
+        "section": "Listener",
+        "sectionOrder": 1
+      },
+      {
+        "key": "showAdvanced",
+        "label": "Show advanced settings",
+        "type": "toggle",
+        "defaultValue": false,
+        "helperText": "Enable to show timeout/endpoints/UI mode settings.",
+        "section": "Listener",
+        "sectionOrder": 1
+      },
+      {
+        "key": "debugToasts",
+        "label": "Enable debug toasts",
+        "type": "toggle",
+        "defaultValue": false,
+        "helperText": "Shows Lumia toast notifications for device connect/offline (and more if Verbose)."
+      },
+      {
+        "key": "toastVerbosity",
+        "label": "Toast verbosity",
+        "type": "select",
+        "defaultValue": "important",
+        "options": [
+          {
+            "label": "Important (connect/offline)",
+            "value": "important"
+          },
+          {
+            "label": "Verbose (also key/actions/pet)",
+            "value": "verbose"
+          }
+        ],
+        "helperText": "Verbose can spam if you press many keys.",
+        "visibleIf": {
+          "key": "debugToasts",
+          "equals": true
+        }
+      },
+      {
+        "key": "keyLabelsShort",
+        "label": "Key labels (Short 0-35)",
+        "type": "textarea",
+        "defaultValue": "",
+        "rows": 12,
+        "helperText": "Optional. One label per line, key order 0..35. Used as {{key_label}} for short presses.",
+        "section": "Key mapping: Short",
+        "sectionOrder": 2
+      },
+      {
+        "key": "keyLabelsLong",
+        "label": "Key labels (Long 0-35)",
+        "type": "textarea",
+        "defaultValue": "",
+        "rows": 12,
+        "helperText": "Optional. One label per line, key order 0..35. Used as {{key_label}} for long presses.",
+        "section": "Key mapping: Long",
+        "sectionOrder": 3
+      },
+      {
+        "key": "keyLabels",
+        "label": "Legacy key labels (0-35)",
+        "type": "textarea",
+        "defaultValue": "",
+        "rows": 10,
+        "helperText": "Legacy single label list (used for both short+long if the new lists are empty).",
+        "section": "Advanced",
+        "sectionOrder": 4,
+        "visibleIf": {
+          "key": "showAdvanced",
+          "equals": true
+        }
+      },
+      {
+        "key": "baseUrl",
+        "label": "ESP Base URL (Optional)",
+        "type": "url",
+        "defaultValue": "",
+        "helperText": "Needed only for TFT/pet actions. Example: http://192.168.1.50",
+        "section": "Display (optional)",
+        "sectionOrder": 3
+      },
+      {
+        "key": "uiMode",
+        "label": "ESP UI Mode",
+        "type": "select",
+        "defaultValue": "legacy_get",
+        "options": [
+          {
+            "label": "Legacy GET (/msg + /status + /clear)",
+            "value": "legacy_get"
+          },
+          {
+            "label": "UI POST (/ui JSON)",
+            "value": "ui_post"
+          }
+        ],
+        "helperText": "Use legacy_get now. Switch to ui_post later without changing actions.",
+        "visibleIf": {
+          "key": "showAdvanced",
+          "equals": true
+        },
+        "section": "Advanced",
+        "sectionOrder": 4
+      },
+      {
+        "key": "timeoutMs",
+        "label": "HTTP Timeout (ms)",
+        "type": "number",
+        "defaultValue": 2000,
+        "helperText": "Timeout waiting for the ESP to respond.",
+        "visibleIf": {
+          "key": "showAdvanced",
+          "equals": true
+        },
+        "section": "Advanced",
+        "sectionOrder": 4
+      },
+      {
+        "key": "msgPath",
+        "label": "Message Path",
+        "type": "text",
+        "defaultValue": "/msg",
+        "helperText": "Legacy GET: /msg?t=...",
+        "visibleIf": {
+          "key": "showAdvanced",
+          "equals": true
+        },
+        "section": "Advanced",
+        "sectionOrder": 4
+      },
+      {
+        "key": "statusPath",
+        "label": "Status Path",
+        "type": "text",
+        "defaultValue": "/status",
+        "helperText": "Legacy GET: /status?t=...",
+        "visibleIf": {
+          "key": "showAdvanced",
+          "equals": true
+        },
+        "section": "Advanced",
+        "sectionOrder": 4
+      },
+      {
+        "key": "clearPath",
+        "label": "Clear Path",
+        "type": "text",
+        "defaultValue": "/clear",
+        "helperText": "Legacy GET: /clear",
+        "visibleIf": {
+          "key": "showAdvanced",
+          "equals": true
+        },
+        "section": "Advanced",
+        "sectionOrder": 4
+      },
+      {
+        "key": "uiPath",
+        "label": "UI Path",
+        "type": "text",
+        "defaultValue": "/ui",
+        "helperText": "UI POST endpoint (default /ui).",
+        "visibleIf": {
+          "key": "showAdvanced",
+          "equals": true
+        },
+        "section": "Advanced",
+        "sectionOrder": 4
+      },
+      {
+        "key": "petPath",
+        "label": "Pet Path",
+        "type": "text",
+        "defaultValue": "/pet",
+        "helperText": "ESP virtual pet endpoint path (default /pet).",
+        "visibleIf": {
+          "key": "showAdvanced",
+          "equals": true
+        },
+        "section": "Advanced",
+        "sectionOrder": 4
+      },
+      {
+        "key": "offlineTimeoutSec",
+        "label": "Offline Timeout (seconds)",
+        "type": "number",
+        "defaultValue": 30,
+        "helperText": "If no events are received for this long, device_connected becomes false.",
+        "visibleIf": {
+          "key": "showAdvanced",
+          "equals": true
+        },
+        "section": "Advanced",
+        "sectionOrder": 4
+      }
+    ],
+    "actions": [
+      {
+        "type": "display_message",
+        "label": "Display: Add Line",
+        "description": "Add a line to the device log area.",
+        "fields": [
+          {
+            "key": "message",
+            "label": "Message",
+            "type": "text",
+            "defaultValue": "",
+            "allowVariables": true,
+            "helperText": "Text to send. Supports Lumia variables/templates."
+          }
+        ]
+      },
+      {
+        "type": "status_message",
+        "label": "Display: Set Status",
+        "description": "Set the device status line.",
+        "fields": [
+          {
+            "key": "message",
+            "label": "Message",
+            "type": "text",
+            "defaultValue": "",
+            "allowVariables": true,
+            "helperText": "Status text. Supports Lumia variables/templates."
+          }
+        ]
+      },
+      {
+        "type": "clear_screen",
+        "label": "Display: Clear",
+        "description": "Clear the device display.",
+        "fields": []
+      },
+      {
+        "type": "pet_action",
+        "label": "Pet Action",
+        "description": "Control the virtual pet or request a pet status sync.",
+        "fields": [
+          {
+            "key": "petAction",
+            "label": "Pet Action",
+            "type": "select",
+            "defaultValue": "status",
+            "options": [
+              { "label": "Status", "value": "status" },
+              { "label": "Sync", "value": "sync" },
+              { "label": "Feed", "value": "feed" },
+              { "label": "Play", "value": "play" },
+              { "label": "Clean", "value": "clean" },
+              { "label": "Sleep / Toggle Sleep", "value": "sleep" },
+              { "label": "Medicine", "value": "med" },
+              { "label": "Discipline", "value": "discipline" },
+              { "label": "Reset", "value": "reset" }
+            ],
+            "helperText": "Runs GET /pet?action=... on the ESP firmware."
+          }
+        ]
+      }
+    ],
+    "variables": [
+      { "name": "device_id", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": "", "example": "" },
+      { "name": "event", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "kind", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": "", "example": "" },
+      { "name": "received_at", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": "", "example": "" },
+      { "name": "key_label", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": "", "example": "" },
+      { "name": "device_ip", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": "", "example": "" },
+      { "name": "device_rssi", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "seq", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "held_ms", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "device_connected", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": false, "example": "false" },
+      { "name": "device_last_seen", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": "", "example": "" },
+      { "name": "device_status_text", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": "", "example": "" },
+      { "name": "pet_change_name", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": "", "example": "" },
+      { "name": "pet_change_code", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_variation", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_field_id", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_field_name", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": "", "example": "" },
+      { "name": "pet_from", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_to", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_delta", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_ui_mode", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": "", "example": "" },
+      { "name": "pet_mode_enabled", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": false, "example": "false" },
+      { "name": "pet_alive", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": false, "example": "false" },
+      { "name": "pet_stage", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_stage_name", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": "", "example": "" },
+      { "name": "pet_age_minutes", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_hunger", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_happiness", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_energy", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_hygiene", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_health", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_discipline", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_poop", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_sick", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": false, "example": "false" },
+      { "name": "pet_sleeping", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": false, "example": "false" },
+      { "name": "pet_event_base", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 72, "example": "72" },
+      { "name": "pet_event_count", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 22, "example": "22" },
+      { "name": "pet_queue_depth", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": 0, "example": "0" },
+      { "name": "pet_last_change_code", "system": true, "origin": "device", "allowedPlaces": ["chat", "overlay", "alert"], "value": -1, "example": "-1" }
+    ],
+    "alerts": [
+      {
+        "title": "6x6 short",
+        "key": "matrix_6x6_short",
+        "acceptedVariables": [
+          "device_id",
+          "event",
+          "kind",
+          "received_at",
+          "key_label",
+          "device_ip",
+          "device_rssi",
+          "seq",
+          "held_ms",
+          "device_connected",
+          "device_last_seen",
+          "device_status_text"
+        ],
+        "defaultMessage": "",
+        "defaults": {
+          "disableBaseAlert": true
+        },
+        "variationConditions": [
+          {
+            "type": "EQUAL_SELECTION",
+            "description": "Which Key (0-35). Compares Against dynamic.value.",
+            "selections": [
+              { "label": "Key 0", "value": "0" },
+              { "label": "Key 1", "value": "1" },
+              { "label": "Key 2", "value": "2" },
+              { "label": "Key 3", "value": "3" },
+              { "label": "Key 4", "value": "4" },
+              { "label": "Key 5", "value": "5" },
+              { "label": "Key 6", "value": "6" },
+              { "label": "Key 7", "value": "7" },
+              { "label": "Key 8", "value": "8" },
+              { "label": "Key 9", "value": "9" },
+              { "label": "Key 10", "value": "10" },
+              { "label": "Key 11", "value": "11" },
+              { "label": "Key 12", "value": "12" },
+              { "label": "Key 13", "value": "13" },
+              { "label": "Key 14", "value": "14" },
+              { "label": "Key 15", "value": "15" },
+              { "label": "Key 16", "value": "16" },
+              { "label": "Key 17", "value": "17" },
+              { "label": "Key 18", "value": "18" },
+              { "label": "Key 19", "value": "19" },
+              { "label": "Key 20", "value": "20" },
+              { "label": "Key 21", "value": "21" },
+              { "label": "Key 22", "value": "22" },
+              { "label": "Key 23", "value": "23" },
+              { "label": "Key 24", "value": "24" },
+              { "label": "Key 25", "value": "25" },
+              { "label": "Key 26", "value": "26" },
+              { "label": "Key 27", "value": "27" },
+              { "label": "Key 28", "value": "28" },
+              { "label": "Key 29", "value": "29" },
+              { "label": "Key 30", "value": "30" },
+              { "label": "Key 31", "value": "31" },
+              { "label": "Key 32", "value": "32" },
+              { "label": "Key 33", "value": "33" },
+              { "label": "Key 34", "value": "34" },
+              { "label": "Key 35", "value": "35" }
+            ]
+          }
+        ]
+      },
+      {
+        "title": "6x6 long",
+        "key": "matrix_6x6_long",
+        "acceptedVariables": [
+          "device_id",
+          "event",
+          "kind",
+          "received_at",
+          "key_label",
+          "device_ip",
+          "device_rssi",
+          "seq",
+          "held_ms",
+          "device_connected",
+          "device_last_seen",
+          "device_status_text"
+        ],
+        "defaultMessage": "",
+        "defaults": {
+          "disableBaseAlert": true
+        },
+        "variationConditions": [
+          {
+            "type": "EQUAL_SELECTION",
+            "description": "Which Key (0-35). Compares Against dynamic.value.",
+            "selections": [
+              { "label": "Key 0", "value": "0" },
+              { "label": "Key 1", "value": "1" },
+              { "label": "Key 2", "value": "2" },
+              { "label": "Key 3", "value": "3" },
+              { "label": "Key 4", "value": "4" },
+              { "label": "Key 5", "value": "5" },
+              { "label": "Key 6", "value": "6" },
+              { "label": "Key 7", "value": "7" },
+              { "label": "Key 8", "value": "8" },
+              { "label": "Key 9", "value": "9" },
+              { "label": "Key 10", "value": "10" },
+              { "label": "Key 11", "value": "11" },
+              { "label": "Key 12", "value": "12" },
+              { "label": "Key 13", "value": "13" },
+              { "label": "Key 14", "value": "14" },
+              { "label": "Key 15", "value": "15" },
+              { "label": "Key 16", "value": "16" },
+              { "label": "Key 17", "value": "17" },
+              { "label": "Key 18", "value": "18" },
+              { "label": "Key 19", "value": "19" },
+              { "label": "Key 20", "value": "20" },
+              { "label": "Key 21", "value": "21" },
+              { "label": "Key 22", "value": "22" },
+              { "label": "Key 23", "value": "23" },
+              { "label": "Key 24", "value": "24" },
+              { "label": "Key 25", "value": "25" },
+              { "label": "Key 26", "value": "26" },
+              { "label": "Key 27", "value": "27" },
+              { "label": "Key 28", "value": "28" },
+              { "label": "Key 29", "value": "29" },
+              { "label": "Key 30", "value": "30" },
+              { "label": "Key 31", "value": "31" },
+              { "label": "Key 32", "value": "32" },
+              { "label": "Key 33", "value": "33" },
+              { "label": "Key 34", "value": "34" },
+              { "label": "Key 35", "value": "35" }
+            ]
+          }
+        ]
+      },
+      {
+        "title": "Pet",
+        "key": "pet",
+        "acceptedVariables": [
+          "pet_change_name",
+          "pet_change_code",
+          "pet_variation",
+          "pet_field_id",
+          "pet_field_name",
+          "pet_from",
+          "pet_to",
+          "pet_delta",
+          "pet_ui_mode",
+          "pet_mode_enabled",
+          "pet_alive",
+          "pet_stage",
+          "pet_stage_name",
+          "pet_age_minutes",
+          "pet_hunger",
+          "pet_happiness",
+          "pet_energy",
+          "pet_hygiene",
+          "pet_health",
+          "pet_discipline",
+          "pet_poop",
+          "pet_sick",
+          "pet_sleeping",
+          "pet_event_base",
+          "pet_event_count",
+          "pet_queue_depth",
+          "pet_last_change_code",
+          "device_id",
+          "device_ip",
+          "device_rssi",
+          "device_last_seen",
+          "device_connected",
+          "device_status_text",
+          "seq"
+        ],
+        "defaultMessage": "Pet update: {{pet_change_name}}",
+        "variationConditions": [
+          {
+            "type": "EQUAL_SELECTION",
+            "description": "Which pet update occurred.",
+            "selections": [
+              { "label": "Hunger Up", "value": "hunger_up" },
+              { "label": "Hunger Down", "value": "hunger_down" },
+              { "label": "Happiness Up", "value": "happiness_up" },
+              { "label": "Happiness Down", "value": "happiness_down" },
+              { "label": "Energy Up", "value": "energy_up" },
+              { "label": "Energy Down", "value": "energy_down" },
+              { "label": "Hygiene Up", "value": "hygiene_up" },
+              { "label": "Hygiene Down", "value": "hygiene_down" },
+              { "label": "Health Up", "value": "health_up" },
+              { "label": "Health Down", "value": "health_down" },
+              { "label": "Discipline Up", "value": "discipline_up" },
+              { "label": "Discipline Down", "value": "discipline_down" },
+              { "label": "Poop Up", "value": "poop_up" },
+              { "label": "Poop Down", "value": "poop_down" },
+              { "label": "Stage Up", "value": "stage_up" },
+              { "label": "Stage Down", "value": "stage_down" },
+              { "label": "Sleep On", "value": "sleep_on" },
+              { "label": "Sleep Off", "value": "sleep_off" },
+              { "label": "Sick On", "value": "sick_on" },
+              { "label": "Sick Off", "value": "sick_off" },
+              { "label": "Alive On", "value": "alive_on" },
+              { "label": "Alive Off", "value": "alive_off" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
