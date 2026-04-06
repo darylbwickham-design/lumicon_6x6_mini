@@ -1,78 +1,172 @@
-# Release Notes — 6×6 Mini with LCD (Lumi-Con) v1.0.0
+# Lumi-Con Release Notes and Feature Overview
 
-This is the first public release of the **6×6 Mini with LCD** project: a compact, Lumia-first control deck using a **Pico-scanned 6×6 matrix**, an **ESP8266** bridge, and an **ST7735 TFT**.
-
----
-
-## What’s included
-
-### Firmware
-- **Pico matrix scanner (6×6)**  
-  - Source: `6x6_test_pico.ino`  
-  - Easy flash: `6x6_test_pico.ino.uf2`
-- **ESP8266 integrated firmware v0.0.4 (ST7735)**  
-  - File: `lumi_con_esp_integrated_0_0_4.ino`  
-  - Includes WiFi provisioning, TFT endpoints, mode selection, and event relay.
-
-### Lumia plugin
-- **Integrated plugin v5.2**
-  - Source: `manifest.json`, `main.js`, `package.json`, `package-lock.json`
-  - Icon: `icon.png`
-
-### 3D print files (STL)
-- `6X6 Front.stl`
-- `6X6 Rear.stl`
-- `connector leg.stl`
-- `controller front with lcd.stl`
-- `electronics rear.stl`
+This document focuses on the **current user-facing platform** and ignores older version history.
 
 ---
 
-## Highlights
+## What Lumi-Con is
 
-### Reliable input → Lumia
-- Sends matrix events `0–71` via `POST /event`:
-  - `0–35` = short press  
-  - `36–71` = long press (key + 36)
+Lumi-Con is a 36-key stream controller with an integrated TFT display, Lumia plugin support, browser-based setup, virtual pet features, health-aware device monitoring, and optional LCD-only display behavior.
 
-### Two reliability modes (selected on boot)
-- **Key 1**: Legacy (HTTP 2xx counts as success)
-- **Key 2**: Confirmed (requires `{ ok:true, seq:<same> }` ACK)
+It is designed to work as:
 
-Recommended: **Confirmed** mode with plugin v5.2.
-
-### Plugin v5.2 reboot recovery
-- Fixes the edge-case where device reboots could require restarting the plugin.
-- Improved seq dedupe logic so events resume immediately after a device reboot.
-
-### Faster TFT updates (ESP v0.0.4)
-- Partial redraw system reduces flicker and improves responsiveness while keeping the same UI layout/output.
+* a hardware control surface
+* a small local display for chat and status messages
+* a Lumia-connected automation device
+* a virtual pet and overlay data source
 
 ---
 
-## Quick Start (short version)
+## Current Release Summary
 
-1) Flash Pico:
-- Drag `6x6_test_pico.ino.uf2` onto the Pico (BOOTSEL mode)
+The current Lumi-Con platform provides:
 
-2) Flash ESP8266:
-- Upload `lumi_con_esp_integrated_0_0_4.ino`
-- IMPORTANT: disconnect Pico GP0 → ESP RX during ESP flashing
-
-3) Join WiFi:
-- Connect to `Lumi-Con-Setup` and configure WiFi at `http://192.168.4.1`
-
-4) Install plugin:
-- Build/install plugin v5.2 (`npm install` → `npx lumia-plugin validate .` → `npx lumia-plugin build ...`)
-- Enable Listener, set port (default 8787)
-
-5) Select mode:
-- On device boot: press Key 1 (Legacy) or Key 2 (Confirmed)
+* browser-based Wi-Fi setup
+* browser-based plugin host setup
+* TFT display actions for chat and status output
+* a local HTTP API for testing and integration
+* virtual pet support on the device and in Lumia
+* multiple runtime modes
+* improved idle/offline handling through silent health checks
+* LCD-only display support for extended display use
 
 ---
 
-## Notes / disclaimer
-This is an experimental community project and is **not affiliated with Lumia**.  
-For feedback or help, tag **AKADAZ** in the Lumia Plugin Discord.
+## Main Features
+
+### Easy setup
+
+Lumi-Con now supports a browser-based setup flow.
+
+* Connect to the **`Lumi-Con-Setup`** access point
+* Open **`http://192.168.4.1`**
+* Enter Wi-Fi details
+* Configure the plugin host with:
+
+  * `http://<device-ip>/plugin?host=<pc-ip>`
+
+This removes the need to edit source code just to change the host address.
 
 ---
+
+### Display features
+
+The device can be used as a small local display for Lumia-driven output.
+
+Available display actions include:
+
+* **Display: Add Line**
+* **Display: Set Status**
+* **Display: Clear**
+
+These can be used for:
+
+* chat-style output
+* stream status text
+* debugging messages
+* custom alerts and automation feedback
+
+---
+
+### Virtual pet support
+
+Lumi-Con includes an integrated virtual pet system.
+
+Current pet features include:
+
+* on-device pet rendering
+* tracked pet state and progression
+* Lumia pet variables
+* remote pet actions from the plugin
+
+Available pet actions include:
+
+* status
+* sync
+* feed
+* play
+* clean
+* sleep
+* med
+* discipline
+* reset
+
+This allows the pet to be used in overlays, automations, and interactive stream features.
+
+---
+
+### Runtime modes
+
+Lumi-Con supports multiple runtime modes.
+
+Current modes include:
+
+* **Chat mode** for normal display use
+* **noPet Debug mode** for non-pet testing/debug use
+* **Pet mode** for full pet behavior
+* **LCD Only Mode** for display-focused use
+
+This gives the platform more flexibility than a simple fixed-function keypad display.
+
+---
+
+### Local API access
+
+The device exposes a practical local API for testing and integration.
+
+Important routes include:
+
+* **`/msg`** for adding display lines
+* **`/status`** for device status
+* **`/clear`** for clearing output
+* **`/ui`** for JSON display commands
+* **`/pet`** for pet actions and pet status
+* **`/health`** for device health information
+* **`/plugin`** for plugin-host configuration
+
+This makes the device easier to test, troubleshoot, and integrate into other tools.
+
+---
+
+### Improved connection handling
+
+The current platform improves offline detection and idle handling.
+
+Instead of immediately marking the device offline when activity stops, the plugin performs a silent health check first.
+
+This helps prevent false offline states during normal idle periods.
+
+---
+
+## Typical Setup Flow
+
+1. Flash the current firmware.
+2. Power the device.
+3. Connect to **`Lumi-Con-Setup`** if Wi-Fi is not configured.
+4. Open **`http://192.168.4.1`**.
+5. Enter Wi-Fi details.
+6. Note the device IP after it joins the network.
+7. Install and configure the Lumia plugin.
+8. From a browser on the same network, run:
+
+   * `http://<device-ip>/plugin?host=<pc-ip>`
+9. Test key events, display actions, and pet actions.
+
+---
+
+## What this means for users
+
+For most users, the important changes are simple:
+
+* setup is easier
+* host configuration no longer needs source edits
+* the device is more reliable when idle
+* the display features are more usable
+* the pet features are properly integrated with Lumia
+* the platform supports more than one type of workflow
+
+---
+
+## summary
+
+**Lumi-Con is a 36-key open-source stream controller with an integrated TFT display, browser-based setup, Lumia plugin support, virtual pet features, and flexible runtime modes for chat, display, and automation workflows.**
