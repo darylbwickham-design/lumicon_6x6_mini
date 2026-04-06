@@ -1,178 +1,195 @@
-# Lumi-Con 6×6 Matrix Mini with LCD — v1.0.2
+# Lumi-Con 6×6 Matrix Mini v1.1.0
 
-A compact **Lumia-first** control deck built around a **6×6 matrix**, a **Raspberry Pi Pico**, an **ESP8266**, and a small **ST7735 TFT** display.
+A 36-key open-source stream controller with an integrated ST7735 TFT display, browser-based device setup, Lumia plugin support, and optional virtual pet features.
 
-This repository represents the **v1.x.x generation of the Lumi-Con 6×6 Matrix Mini project as a whole**.
+This project uses:
 
-The project is split into three practical parts:
-
-- **Pico firmware** for matrix scanning
-- **ESP8266 firmware** for Wi-Fi, HTTP, TFT display, and Lumia relay
-- **Lumia plugin** for event intake, alert triggering, and TFT text actions
-
-This mini device project is separate from the larger main Lumi-Con project.
+- a **Raspberry Pi Pico (RP2040)** to scan the 6×6 matrix
+- an **ESP8266** to handle the TFT, Wi-Fi, HTTP API, and Lumia communication
+- a **Lumia plugin** to receive key events, expose variables, and send display / pet actions back to the device
 
 ---
 
-## Recommended version combination
-
-For most users, the recommended and most stable setup is:
-
-- **Project generation:** **Lumi-Con 6×6 Matrix Mini v1.x.x**
-- **Pico firmware:** `6x6_test_pico.ino` / `6x6_test_pico.ino.uf2`
-- **ESP8266 firmware:** `lumi_con_esp_integrated_0_3_6.ino`
-- **Lumia plugin:** **1_x_x**
-
-### Lumia Marketplace naming note
-The recommended plugin version is **v5.2**, but on the **Lumia Marketplace** it may appear as **1.0.x**.
-
-
-
----
-
-## What the device does
+## What it does
 
 ### Inputs: device → Lumia
-- The **Pico** scans all 36 keys and sends UART packets to the ESP8266
-- The **ESP8266** converts those into Lumia-facing event numbers:
-  - **Short press**: events `0–35`
-  - **Long press**: events `36–71` (`key + 36`)
-- The ESP8266 then sends events to the Lumia plugin:
-  - `POST http://<PC_IP>:<PORT>/event`
 
-### Display: Lumia → device
-The ESP8266 exposes TFT endpoints so Lumia can push text and status updates to the screen:
+- The Pico scans all 36 keys and sends UART packets to the ESP8266.
+- The ESP8266 converts those into Lumia-facing events:
+  - **Short press:** `0–35`
+  - **Long press:** `36–71` (`key + 36`)
+- The ESP8266 posts events to the Lumia plugin listener.
 
-- `GET /msg?t=...`
-- `GET /status?t=...`
-- `GET /clear`
-- `POST /ui` (JSON)
-- `GET /health`
+### Display and pet control: Lumia → device
+
+The ESP8266 exposes local HTTP endpoints so Lumia can send text, status updates, clear commands, health checks, and pet actions back to the device.
 
 ---
 
-## Repository contents
+## Recommended current release set
 
-### Firmware
+Use this combination as the current baseline:
 
-#### Pico
-- `6x6_test_pico.ino`  
-  Source version of the current test Pico firmware
-- `6x6_test_pico.ino.uf2`  
-  Easy drag-and-drop flash file
+- **Pico firmware:** `6x6_test_pico.ino` or UF2 built from it
+- **ESP firmware:** `lumi_con_esp_integrated_0_4_2.ino`
+- **Lumia plugin:** `6x6_matrix_mini_v1_1_3.lumiaplugin`
 
-#### ESP8266
-- `lumi_con_esp_integrated_0_3_6_fixed.ino`  
-  **Recommended stable ESP firmware**
+### Plugin naming note
 
-### Additional ESP development builds
-Later ESP builds may also be present in the repository for development and testing, for example:
+Older project history refers to the integrated plugin as **v5.2**. That package is effectively the **1.0.0** public baseline for the newer `6x6 matrix mini` plugin line.
 
-- `lumi_con_esp_integrated_0_1_1.ino`
-- `lumi_con_esp_integrated_0_1_2.ino`
-- `lumi_con_esp_integrated_0_1_3.ino`
-- `lumi_con_esp_integrated_0_2_0.ino`
-- `lumi_con_esp_integrated_0_2_1.ino`
-- `lumi_con_esp_integrated_0_2_2.ino`
-- `lumi_con_esp_integrated_0_2_3.ino`
+If you are using the newer plugin packages, treat these as the current progression:
 
-These later ESP builds are **development branch firmware** and are not the recommended starting point for most users.
+- `1.0.0` = old integrated `v5.2`
+- `1.1.x` = newer `6x6 matrix mini` plugin line
 
-### Lumia plugin files
-- `6x6_matrix_mini_v1_0_0.lumiaplugin`
-- `6x6_matrix_mini_v1_0_1.lumiaplugin`
-- `6x6_matrix_mini.lumiaplugin`
+---
 
-Recommended plugin release:
-- **Plugin v5.2**
-- May appear as **1.0.x** on the Lumia Marketplace
+## Main features
 
-### 3D print files
-- `6X6 Front.stl`
-- `6X6 Rear.stl`
-- `connector leg.stl`
-- `controller front with lcd.stl`
-- `electronics rear.stl`
+### Easy browser-based setup
+
+On first boot, the ESP firmware can create a setup access point named **`Lumi-Con-Setup`**.
+
+Connect to it and open:
+
+`http://192.168.4.1`
+
+From there you can join the device to your Wi-Fi network without editing the firmware source.
+
+### Browser-based plugin host pairing
+
+Once the device is on your network, you can set the Lumia/plugin host from a browser instead of recompiling the ESP sketch.
+
+Use:
+
+`http://<device-ip>/plugin?host=<pc-ip>`
+
+This host is stored by the ESP and reused after reboot.
+
+### TFT display actions
+
+The Lumia plugin can send:
+
+- **Display: Add Line**
+- **Display: Set Status**
+- **Display: Clear**
+
+This is useful for:
+
+- scene/status text
+- alerts
+- chat-style output
+- debugging
+- custom stream messages
+
+### Virtual pet support
+
+The platform includes an optional virtual pet system.
+
+The current plugin supports these pet actions:
+
+- `status`
+- `sync`
+- `feed`
+- `play`
+- `clean`
+- `sleep`
+- `med`
+- `discipline`
+- `reset`
+
+The plugin also exposes pet variables for overlays, alerts, and automations.
+
+### More reliable idle handling
+
+The current plugin line performs a silent health check using `/status?silent=1` before marking the device offline, which helps avoid false disconnects when the device is simply idle.
+
+### Multiple runtime modes
+
+The current ESP firmware supports:
+
+- **Chat mode**
+- **noPet Debug mode**
+- **Pet mode**
+- **LCD Only Mode**
+
+---
+
+## Repository layout
+
+At the time of writing, the public repository includes top-level folders for **3d files**, **Docs**, **Firmware**, and **Plugins/v5.2**. This README is written around the latest firmware and plugin files reviewed for this update, even where the live public repo still shows older packaging and README text. 
+
+Recommended repo structure going forward:
+
+- `Firmware/` for Pico and ESP firmware
+- `Plugins/` for Lumia plugin packages and source
+- `Docs/` for setup docs, changelogs, and release notes
+- `3d files/` for enclosure and print assets
 
 ---
 
 ## Hardware overview
 
 ### Pico ↔ 6×6 matrix
-The Pico scans the key matrix.
 
-### Pico → ESP8266
-The Pico sends UART key data to the ESP.
+The Pico scans the matrix.
 
-### ESP8266 → TFT + Lumia
-The ESP handles:
-
-- Wi-Fi connection
-- HTTP endpoints
-- TFT screen drawing
-- Sending events to the Lumia plugin
-- Receiving message/status/UI actions for the TFT
-
----
-
-## Hardware wiring
-
-### Important for ESP flashing
-Disconnect **Pico GP0 (TX) → ESP RX (GPIO3)** while uploading firmware to the ESP8266.
-
-### A) Pico ↔ 6×6 matrix
-Matches `6x6_test_pico.ino`
+Current Pico test firmware pin mapping:
 
 #### Rows (inputs with pullups)
-- R0 → GP12
-- R1 → GP1
-- R2 → GP2
-- R3 → GP3
-- R4 → GP4
-- R5 → GP5
+- `R0 -> GP12`
+- `R1 -> GP1`
+- `R2 -> GP2`
+- `R3 -> GP3`
+- `R4 -> GP4`
+- `R5 -> GP5`
 
 #### Columns (outputs)
-- C0 → GP6
-- C1 → GP7
-- C2 → GP8
-- C3 → GP9
-- C4 → GP10
-- C5 → GP11
+- `C0 -> GP6`
+- `C1 -> GP7`
+- `C2 -> GP8`
+- `C3 -> GP9`
+- `C4 -> GP10`
+- `C5 -> GP11`
 
-### B) Pico → ESP8266 UART
-- Pico GP0 (TX) → ESP RX / GPIO3
-- Pico GND → ESP GND
-- Optional: 1k resistor in series on TX line
+### Pico → ESP8266 UART
 
-### C) ESP8266 → ST7735 TFT (SPI)
-Typical ESP8266 hardware SPI wiring:
+- `Pico GP0 (TX) -> ESP RX / GPIO3`
+- `Pico GND -> ESP GND`
+- Optional: `1k` resistor in series on the TX line
 
-- TFT VCC  → 3V3
-- TFT GND  → GND
-- TFT SCK  → D5 (GPIO14)
-- TFT MOSI → D7 (GPIO13)
-- TFT CS   → D2 (GPIO4)
-- TFT DC   → D1 (GPIO5)
+### ESP8266 → ST7735 TFT (SPI)
 
-#### Recommended reset wiring
-- TFT RST → **ESP RST**
+Current ESP firmware pin mapping:
 
-#### Note
-The recommended stable ESP firmware uses `TFT_RST = -1`, meaning TFT reset is not driven from a GPIO in the sketch. Wiring TFT RST directly to ESP RST is the simplest and most reliable setup.
+- `TFT VCC -> 3V3`
+- `TFT GND -> GND`
+- `TFT SCK -> D5 / GPIO14`
+- `TFT MOSI -> D7 / GPIO13`
+- `TFT CS -> D2 / GPIO4`
+- `TFT DC -> D1 / GPIO5`
+- `TFT RST -> ESP RST` recommended
+
+### Important flashing note
+
+Disconnect `Pico GP0 (TX) -> ESP RX (GPIO3)` while uploading firmware to the ESP8266.
 
 ---
 
 ## Arduino IDE setup
 
 ### 1) Install Arduino IDE
-Install Arduino IDE from:
+
+Download from:
 
 `https://www.arduino.cc/en/software`
 
 ### 2) Add board manager URLs
+
 In Arduino IDE, open:
 
-**File → Preferences → Additional Boards Manager URLs**
+`File -> Preferences -> Additional Boards Manager URLs`
 
 Add:
 
@@ -183,198 +200,246 @@ Add:
 `https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json`
 
 ### 3) Install board packages
+
 Open:
 
-**Tools → Board → Boards Manager**
+`Tools -> Board -> Boards Manager`
 
 Install:
 
 - **ESP8266 by ESP8266 Community**
 - **Raspberry Pi Pico/RP2040 by Earle Philhower**
 
-### 4) Install required libraries
+### 4) Install required libraries for the ESP8266 firmware
 
-#### Required for the ESP8266 firmware
-Install these through **Sketch → Include Library → Manage Libraries**:
+Install through **Sketch -> Include Library -> Manage Libraries**:
 
-- **WiFiManager** by tzapu / tablatronix
-- **Adafruit GFX Library** by Adafruit
-- **Adafruit ST7735 and ST7789 Library** by Adafruit
+- **WiFiManager**
+- **Adafruit GFX Library**
+- **Adafruit ST7735 and ST7789 Library**
 
-These cover the external libraries used by the ESP firmware.
-
-#### Included with the ESP8266 board package
-These are used by the ESP sketch but normally come with the ESP8266 core, so you do **not** usually install them separately:
-
-- `ESP8266WiFi`
-- `ESP8266WebServer`
-- `ESP8266HTTPClient`
-- `WiFiClient`
-- `EEPROM`
-- `SPI`
-
-#### Pico library note
-The current `6x6_test_pico.ino` uses the RP2040 core and standard Arduino functionality only.
-It does **not** require any extra third-party Arduino libraries beyond the installed **Raspberry Pi Pico/RP2040** board package.
+The Pico test firmware does not require extra third-party Arduino libraries beyond the RP2040 board package.
 
 ---
 
 ## Flashing the firmware
 
 ### 1) Flash the Pico
-The easiest method is UF2 drag-and-drop flashing.
+
+Flash your current Pico matrix-scanner firmware first.
+
+If you use a UF2 build:
 
 1. Hold **BOOTSEL** while plugging the Pico into USB
 2. The Pico appears as a USB drive
-3. Drag and drop:
-   - `6x6_test_pico.ino.uf2`
+3. Drag and drop the UF2 file
+
+If you use source:
+
+- Open `6x6_test_pico.ino`
+- Select your Pico board
+- Upload normally
 
 ### 2) Flash the ESP8266
-1. Disconnect **Pico GP0 → ESP RX (GPIO3)**
-2. Upload:
-   - `lumi_con_esp_integrated_0_3_6_fixed.ino`
-3. Reconnect **Pico GP0 → ESP RX (GPIO3)**
+
+1. Disconnect `Pico GP0 -> ESP RX`
+2. Open `lumi_con_esp_integrated_0_4_2.ino`
+3. Select the correct ESP8266 board
+4. Upload the firmware
+5. Reconnect `Pico GP0 -> ESP RX`
 
 ---
 
-## First-time ESP Wi-Fi setup
+## First-time device setup
 
-The ESP firmware uses **WiFiManager** for first-time network setup.
+### Step 1: connect the ESP to Wi-Fi
 
-1. Power the ESP
-2. A setup access point appears:
-   - `Lumi-Con-Setup`
-3. Connect to that AP
-4. Open:
-   - `http://192.168.4.1`
-5. Select your Wi-Fi network and enter the password
-6. Save
-7. The ESP reboots and the TFT shows its IP address
+1. Power the device
+2. Connect to the access point:
+   - **`Lumi-Con-Setup`**
+3. Open:
+   - **`http://192.168.4.1`**
+4. Select your Wi-Fi network and enter the password
+5. Save
+6. The ESP reboots and the display shows its IP address
 
----
+### Step 2: install and configure the Lumia plugin
 
-## Lumia plugin install
+Install the current Lumia plugin package.
 
-Open a terminal in the plugin folder, where `package.json` is located.
+Recommended current plugin:
 
-### Build on Windows
-```bash
-npm install
-npx lumia-plugin validate .
-npx lumia-plugin build . --out .\lumi_con_bridge_integrated_v5_2.lumiaplugin
-```
-
-### Install into Lumia
-- Open **Lumia**
-- Go to **Configuration → Plugins → Installed → Install Manually**
-- Select:
-  - `lumi_con_bridge_integrated_v5_2.lumiaplugin`
-
-### Marketplace note
-The recommended plugin is **v5.2**, but depending on where you view it, it may be labelled as **1.0.x** on the Lumia Marketplace.
-
----
-
-## Plugin configuration
+- `6x6_matrix_mini_v1_1_3.lumiaplugin`
 
 In Lumia plugin settings:
 
-- **Enable Listener** = ON
-- **Listen Port** = `8787`
-- **Shared Secret** = blank, or set one if you want one
+- **Enable Listener**: `ON`
+- **Listen Port**: `8787`
+- **Shared Secret**: blank unless you intentionally set one in firmware
+- **ESP Base URL**: set this to your device address, for example:
+  - `http://192.168.1.50`
 
-### Optional for TFT actions
-- **ESP Base URL** = `http://<ESP_IP>`
+Recommended defaults:
 
-### Optional for debugging
-- **Enable Debug Toasts** = ON
+- **ESP UI Mode**: `legacy_get`
+- **Status Path**: `/status`
+- **Pet Path**: `/pet`
+
+### Step 3: pair the device with the plugin host
+
+From a browser on the same network, run:
+
+`http://<device-ip>/plugin?host=<pc-ip>`
+
+Example:
+
+`http://192.168.1.50/plugin?host=192.168.1.87`
+
+This tells the ESP where the Lumia plugin listener is running.
+
+### Step 4: confirm the device is responding
+
+Useful test URLs:
+
+- `http://<device-ip>/health`
+- `http://<device-ip>/plugin`
+- `http://<device-ip>/msg?t=Hello`
+- `http://<device-ip>/status?t=OK`
+- `http://<device-ip>/clear`
+- `http://<device-ip>/pet?action=status`
 
 ---
 
-## ESP firmware configuration
+## Current HTTP API
 
-Edit these constants in `lumi_con_esp_integrated_0_3_6.ino` so they match your PC and Lumia plugin settings:
+The current ESP firmware supports these user-facing routes:
 
-```cpp
-const char* PLUGIN_HOST = "192.168.1.87"; // your PC IP
-constexpr uint16_t PLUGIN_PORT = 8787;    // same as plugin Listen Port
-const char* PLUGIN_SECRET = "";           // same as Shared Secret (or blank)
-```
-
----
-
-## Mode selection on boot
-
-After Wi-Fi connects and the IP is shown, the ESP waits for a mode choice using the matrix keys:
-
-- Press **Key 0** → **factory reset**
-- Press **Key 2** → **Debug mode**
-- Press **Key 35** → **E-PET mode**
- 
+- `GET /`
+- `GET /msg?t=...`
+- `GET /status?t=...`
+- `GET /status?silent=1`
+- `GET /clear`
+- `POST /ui`
+- `GET /health`
+- `GET /plugin`
+- `GET /plugin?host=<pc-ip>`
+- `GET /plugin?clear=1`
+- `GET /pet?action=status|sync|feed|play|clean|sleep|med|toggleSleep|discipline|reset`
 
 ---
 
-## Quick test URLs
+## Boot behavior and modes
 
-### Check ESP endpoints
-- `http://<ESP_IP>/health`
-- `http://<ESP_IP>/msg?t=Hello`
-- `http://<ESP_IP>/status?t=OK`
-- `http://<ESP_IP>/clear`
+Current boot-key behavior in the ESP firmware:
 
-### Check plugin listener
-- `http://<PC_IP>:8787/health`
+- Hold **Pico key 0** at boot -> reset Wi-Fi settings and restart
+- Hold **Pico key 1** at boot -> Chat mode
+- Hold **Pico key 2** at boot -> noPet Debug mode
+- Hold **Pico key 35** at boot -> Pet mode
+
+Current runtime modes include:
+
+- **Chat mode**
+- **noPet Debug mode**
+- **Pet mode**
+- **LCD Only Mode**
+
+---
+
+## Lumia plugin: what it adds
+
+### Alerts
+
+The current plugin provides:
+
+- **6x6 short**
+- **6x6 long**
+- **Pet**
+
+### Actions
+
+The current plugin provides:
+
+- **Display: Add Line**
+- **Display: Set Status**
+- **Display: Clear**
+- **Pet Action**
+
+### Useful variables
+
+The plugin exposes device and pet variables, including:
+
+- `{{event}}`
+- `{{kind}}`
+- `{{key_label}}`
+- `{{held_ms}}`
+- `{{device_id}}`
+- `{{device_ip}}`
+- `{{device_rssi}}`
+- `{{device_connected}}`
+- `{{device_status_text}}`
+- `{{pet_stage_name}}`
+- `{{pet_hunger}}`
+- `{{pet_happiness}}`
+- `{{pet_health}}`
+- `{{pet_poop}}`
+- `{{pet_change_name}}`
+
+---
+
+## Quick usage ideas
+
+- Use **Display: Set Status** for stream state text such as `LIVE`, `BRB`, or scene names.
+- Use **Display: Add Line** for scrolling messages, redeems, or now-playing text.
+- Use **Pet Action -> status** before updating a pet overlay.
+- Use **Pet Action -> sync** after reconnecting the device.
+- Use **Pet Action -> clean** when a pet event indicates poop-related state changed.
 
 ---
 
 ## Troubleshooting
 
-### Missing library errors in Arduino IDE
-If the ESP sketch fails with missing library errors, make sure these are installed:
-
-- **WiFiManager**
-- **Adafruit GFX Library**
-- **Adafruit ST7735 and ST7789 Library**
-
-If the Pico sketch fails, double-check that the **Raspberry Pi Pico/RP2040** board package is installed correctly.
-
 ### ESP upload fails
-Disconnect **Pico GP0 (TX) → ESP RX (GPIO3)** while flashing the ESP8266.
+
+Disconnect `Pico GP0 (TX) -> ESP RX (GPIO3)` while flashing the ESP8266.
+
+### The setup AP does not appear
+
+- Reboot the device
+- Use the factory reset boot key path if Wi-Fi credentials need clearing
+- Make sure the ESP firmware actually flashed successfully
 
 ### TFT stays white or blank
-- Check that **TFT RST** is wired to **ESP RST**
-- If colours are wrong, try a different ST7735 init tab in the ESP firmware:
-  - `INITR_GREENTAB`
-  - `INITR_REDTAB`
-  - `INITR_BLACKTAB`
 
-### Lumia alerts do not fire
-- Check that ESP `PLUGIN_HOST` matches your PC IP
-- Check that ESP `PLUGIN_PORT` matches the plugin listen port
-- If you use a shared secret, it must match on both sides
-- Make sure the PC and ESP are on the same LAN
+- Check TFT power and SPI wiring
+- Wire `TFT RST -> ESP RST`
+- If colours are wrong, check the ST7735 tab/init settings in firmware
 
-### Plugin version naming looks strange
-- The recommended plugin release is **v5.2**
-- On the Lumia Marketplace it may be shown as **1.0.x**
-- This README uses the internal project version history for clarity
+### Lumia receives nothing
 
----
+- Make sure the plugin listener is enabled
+- Confirm the plugin listen port is `8787` unless intentionally changed
+- Confirm the ESP host pairing was set with:
+  - `http://<device-ip>/plugin?host=<pc-ip>`
+- Confirm the PC and device are on the same LAN
 
-## Development branch note
+### Lumia can receive key events but cannot send text or pet commands
 
-The later ESP firmware builds in this repository belong to the ongoing development branch.
+- Set **ESP Base URL** in plugin settings to the device address
+- Check `/health` and `/status` in a browser
+- Confirm the device IP did not change after a reboot
 
+### The plugin looks “offline” after idle time
 
-If you are building the device for normal use, start with:
+The current plugin line performs one silent health check first. If you still see offline behavior:
 
-- **Pico:** `6x6_test_pico.ino.uf2`
-- **ESP:** `lumi_con_esp_integrated_0_3_6.ino`
-- **Plugin:** **v1.1.2**
-
+- confirm **ESP Base URL** is correct
+- confirm **Status Path** is `/status`
+- confirm the device responds to:
+  - `http://<device-ip>/status?silent=1`
 
 ---
 
-## License / disclaimer
+## Suggested public summary
 
-This is an experimental community project and is **not affiliated with Lumia**.
+**Lumi-Con 6×6 Matrix Mini is a 36-key open-source stream controller with an integrated TFT display, browser-based device setup, Lumia plugin support, virtual pet features, and flexible display/status workflows for streams and automations.**
