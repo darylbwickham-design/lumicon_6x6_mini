@@ -1,211 +1,247 @@
-# Changelog — Lumi-Con Lumia Plugin (Integrated)
+## Versioning notes
 
-This changelog tracks the evolution of the **integrated Lumi-Con Lumia plugin** from **v1.0.0** through **v5.2**.
-
-Legend:
-- ✅ Added
-- 🔁 Changed
-- 🛠 Fixed
-- ⚠️ Compatibility note
+* **ESP firmware:** the **filename is the correct public version**. Internal header version strings are ignored where they conflict.
+* **Plugin:** `lumi_con_bridge_integrated_v5_2` should be treated as **plugin version `1.0.0`**.
 
 ---
 
-## v5.2 (Seq Dedupe Fix) — Current
-🛠 **Fixed seq de-duplication after device reboot**
-- Fixes a case where legitimate events could be ignored after an ESP restart because old sequence tracking was still treated as valid.
-- Improves reliability when the device reconnects or reboots during live use.
+# ESP Firmware Changelog
 
-✅ **Includes all v5.1 features**
-- Debug toast support
-- Offline detection and device status variables
-- TFT action support
-- Legacy and confirmed event compatibility
+### 0_0_1
 
-⚠️ Compatibility
-- Fully backwards compatible with existing firmware payloads:
-  - Works with legacy `{event:N}`
-  - Works with newer payloads containing `seq`, `deviceId`, `heldMs`, and related metadata
+* Initial integrated ESP8266 firmware baseline.
+* Added ST7735 TFT display support.
+* Added HTTP display endpoints: `/msg`, `/status`, and `/clear`.
+* Added `POST /ui` for browser or plugin-driven text updates.
+* Added Pico UART packet input for button events.
+* Added Lumia event posting for short and long press actions.
+* Added WiFiManager-based Wi-Fi setup.
+
+### 0_0_3
+
+* Refined the display layout with a two-line header structure.
+* Improved transient status and prompt handling.
+* Added immediate redraw when temporary header text expires.
+* Added LED blink feedback on received press packets.
+* Added blocking mode selection after Wi-Fi connection.
+* Added `/health` endpoint.
+
+### 0_0_4
+
+* Improved rendering performance and general UI cleanup.
+* Kept runtime behavior aligned with `0_0_3`.
+* Retained the mode-selection flow.
+* Updated the TFT reset pin arrangement used by this build.
+
+### 0_1_0
+
+* Introduced the integrated pet system.
+* Added EEPROM-backed save data with validation and CRC.
+* Added pet animation and stat rendering.
+* Added `/pet` endpoint support.
+* Added Lumia-linked pet change event scaffolding.
+* Added direct onboard pet-button controls.
+* Reworked the codebase into a more structured tutorial-style layout.
+
+### 0_1_1
+
+* Continued refinement of the new pet firmware branch.
+* Retained pet simulation, persistence, rendering, and Lumia-linked event support.
+* Improved overall structure and maintainability.
+
+### 0_1_2
+
+* Continued iteration on the integrated pet firmware.
+* Retained the EEPROM-backed pet system and Lumia-linked control flow.
+* Focused on stability and internal cleanup.
+
+### 0_1_3
+
+* Continued refinement of the pet-focused firmware branch.
+* Preserved the existing pet simulation and rendering model.
+* Focused on incremental polish and cleanup.
+
+### 0_2_0
+
+* Began transition toward Lumia-first pet control.
+* Retained the pet system, EEPROM persistence, and `/pet` endpoint.
+* Reduced emphasis on direct onboard pet interaction.
+
+### 0_2_1
+
+* Moved further into the Lumia-only pet control model.
+* Retained pet state change events with telemetry values for Lumia use.
+* Added boot-time pet disable behavior.
+* Added boot-time Wi-Fi reset behavior.
+
+### 0_2_2
+
+* Introduced mode-based runtime behavior.
+* Added **Chat mode**.
+* Added **noPet Debug mode**.
+* Retained Lumia-only pet control.
+* Moved mode selection into boot behavior.
+
+### 0_2_3
+
+* Iterated on the new mode-based runtime branch.
+* Retained Chat mode, noPet Debug mode, and the Lumia pet control path.
+* Focused on cleanup and minor runtime refinement.
+
+### 0_2_4
+
+* Added the branded boot presentation flow.
+* Standardized boot order to:
+
+  * Lumi-Con logo
+  * 6x6 Matrix Mini logo
+  * Welcome screen
+  * Boot options screen
+* Established the boot flow used by later versions.
+
+### 0_2_5
+
+* Continued the branded boot-flow branch.
+* Preserved the runtime structure introduced in `0_2_4`.
+* Focused on small cleanup and continuity.
+
+### 0_2_6
+
+* Expanded and consolidated the integrated firmware branch.
+* Retained Chat mode, noPet Debug mode, pet support, EEPROM persistence, and branded boot flow.
+* Marked a larger internal integration step ahead of later UI polish work.
+
+### 0_2_7
+
+* Restored the intended boot splash assets.
+* Preserved the broader runtime behavior from the prior integrated branch.
+* Focused on correcting the boot presentation.
+
+### 0_3_0
+
+* Set **Chat mode** as the default runtime mode.
+* Hid **Pet mode** unless explicitly selected at boot.
+* Froze pet behavior unless pet mode is actively selected.
+* Preserved the branded boot flow.
+* Began a `0_3_x` series focused mainly on pet rendering and boot-logo polish.
+
+### 0_3_1
+
+* Refined boot-mode handling and documentation.
+* Added explicit hidden pet-mode boot selection on key `35`.
+* Retained Chat mode as the default runtime path.
+* Preserved the branded boot flow.
+
+### 0_3_2
+
+* Continued polish on the `0_3_x` branch.
+* Focused mainly on pet rendering tweaks and boot/logo presentation refinement.
+* Retained the hidden pet-mode model and default Chat mode.
+
+### 0_3_3
+
+* Continued polish on the `0_3_x` branch.
+* Focused mainly on pet rendering tweaks and boot/logo presentation refinement.
+* Retained the existing runtime structure.
+
+### 0_3_4
+
+* Continued `0_3_x` polish work.
+* Improved Wi-Fi setup screen wording.
+* Retained Chat mode as default and hidden pet mode on boot key `35`.
+* Continued refining pet rendering and boot/logo presentation.
+
+### 0_3_5
+
+* Continued `0_3_x` polish work.
+* Refined text rendering calls to reduce unnecessary background-color redraw behavior in text output paths.
+* Retained the existing runtime structure, default Chat mode, and hidden pet mode.
+* Continued polishing Wi-Fi setup wording, pet rendering, and boot/logo presentation.
+
+### 0_3_6
+
+* Continued `0_3_x` polish work.
+* Retained the Wi-Fi setup text improvements from the prior build.
+* Reworked event POST payload construction from repeated `String` concatenation to a fixed buffer with `snprintf`, improving the event-send path.
+* Preserved the existing runtime model, default Chat mode, and hidden pet mode.
+
+### 0_4_0
+
+* Added browser-settable plugin host configuration with `GET /plugin`.
+* Added support for setting the plugin host from a browser query, for example `/plugin?host=192.168.1.50`.
+* Added support for clearing the saved plugin host with `/plugin?clear=1`.
+* Moved plugin host storage into EEPROM so it persists across reboot.
+* Updated `/health` to report the active plugin host and port.
+* Switched event posting to use the configured plugin host instead of a source-hardcoded host.
+
+### 0_4_1
+
+* Added silent health-probe support on `/status` to help prevent disconnects after idle periods.
+* Changed `/status` to return structured JSON status data instead of simple plain-text acknowledgement.
+* Added support for `silent=1` so health checks can avoid forcing visible UI interruptions.
+* Included device metadata in `/status`, including device ID, IP, RSSI, sequence counter, and firmware version.
+* Retained browser-configurable plugin host support and EEPROM-backed host persistence.
+
+### 0_4_2
+
+* Expanded the firmware beyond the earlier `0_4_1` health-probe update.
+* Added **LCD Only Mode** as an additional runtime mode.
+* Added special serial packet handling for entering LCD Only Mode and requesting pet status broadcasts.
+* Added serial transmission of pet snapshot/status data for secondary-device integration.
+* Ignored normal keypad events while LCD Only Mode is active.
+* Updated pet timing so timers stay in sync while the pet is paused outside active pet modes.
+* Replaced the plain-text root endpoint with a simple HTML API landing page.
+* Expanded `/health` with free-heap and formatted uptime reporting.
+* Expanded mode reporting to include `lcdOnly`.
+* Refined the Wi-Fi setup presentation, including the AP name `Lumi-Con-Setup` and clearer `http://192.168.4.1` browser instructions.
 
 ---
 
-## v5.1 (Debug Toasts)
-✅ **Optional debug toasts**
-- Adds optional Lumia toast notifications for diagnostics and support workflows.
-- Toasts are disabled by default for normal use.
+# Lumia Plugin Changelog
 
-✅ **Toast modes**
-- **Important**:
-  - Device connected
-  - Device offline
-- **Verbose**:
-  - Device connected/offline
-  - Key events
-  - TFT actions
+### 1.0.0
 
-✅ **Toast throttling**
-- Reduces notification spam when keys are pressed rapidly or repeated events arrive in a short burst.
+* Initial stable integrated Lumia plugin baseline.
+* Added listener support for Lumi-Con device events.
+* Added short and long press handling for the 6×6 matrix.
+* Added device status variables for overlays, alerts, and debugging.
+* Added TFT display actions for message, status, and clear operations.
+* Added sequence dedupe handling to avoid repeated event processing.
+* Fixed sequence dedupe after device reboot so events resume correctly after the ESP restarts.
+* Included status, offline, and toast support in the integrated plugin branch.
 
-🔁 **Improved support UX**
-- Keeps the plugin quiet for everyday users while making diagnostics much easier for builders and testers.
+### 1.1.0
 
-⚠️ Compatibility
-- Fully backwards compatible with both:
-  - Legacy payloads using `{event:N}`
-  - Confirmed/retry-capable payloads using `{event, seq, deviceId, ...}`
+* Renamed and repackaged the plugin as **6x6 matrix mini**.
+* Expanded the plugin from matrix-only behavior into a fuller device plugin covering LCD, chat, alerts, and virtual pet support.
+* Added pet event support with event range beginning at `72`.
+* Added pet variables for overlays, alerts, and automation use.
+* Added **Pet Action** support for status, sync, feed, play, clean, sleep, medicine, discipline, and reset.
+* Added `petPath` advanced setting for ESP pet endpoint configuration.
+* Updated debug toast wording to include pet-related activity.
+* Expanded tutorials/settings references to external markdown files inside the plugin package.
 
----
+### 1.1.1
 
-## v5.0 (Device Status + Offline Detection)
-✅ **Offline detection**
-- Tracks the last event timestamp from the connected device.
-- Marks the device offline when no events arrive within the configured timeout window.
-- Returns to online state automatically when a new event is received.
+* Refined the plugin manifest and alert definitions.
+* Simplified pet alert variation metadata.
+* Kept runtime behavior aligned with `1.1.0`.
+* No core listener or action logic changes detected in `main.js`.
 
-✅ **Single-line status variable**
-- Adds and maintains `device_status_text` for easy use in overlays, monitoring, and support views.
-- Example values:
-  - `CONNECTED | RSSI -55 | 12s ago`
-  - `OFFLINE`
+### 1.1.2
 
-✅ **Expanded device state variables**
-- Consistently updates:
-  - `device_id`
-  - `device_ip`
-  - `device_last_seen`
-  - `device_rssi`
-  - `device_connected`
+* Improved sequence handling for incoming device events.
+* Changed duplicate detection so exact repeated sequence values are ignored cleanly.
+* Reset sequence tracking when a lower sequence value is received, improving recovery after device-side counter changes.
+* Greatly expanded the bundled setup and actions documentation.
+* Added fuller documentation for key events, pet variables, device variables, and example Lumia setups.
 
-🔁 **Minimal setup retained**
-- Keeps the plugin easy to use with sensible defaults such as listener enabled and default port 8787.
-- TFT settings remain optional and mode-dependent.
+### 1.1.3
 
-⚠️ Compatibility
-- Does not require firmware-side changes.
-- Continues to support both newer and older device payloads.
-
----
-
-## v4.0 (Separate Key Label Pages: Short vs Long)
-✅ **Two independent key label maps**
-- Adds separate settings for:
-  - **Key labels (Short 0–35)**
-  - **Key labels (Long 0–35)**
-- Selects `key_label` from the correct map based on event kind.
-
-🛠 **Improved control-layer clarity**
-- Makes short and long presses behave more like distinct control layers, closer to a real stream deck workflow.
-
-⚠️ Compatibility
-- Preserves fallback support for the older single `keyLabels` field.
-- If dedicated short/long label lists are empty, the legacy shared label list can still be used.
-
----
-
-## v3.0 (Onboarding + Device Vars + Key Labels)
-✅ **Improved onboarding / minimal setup**
-- Defaults are designed to work immediately in common setups:
-  - Listener enabled by default
-  - Default port 8787
-- Advanced options can be hidden behind “Show advanced settings” where supported.
-
-✅ **Baseline device variables**
-- Tracks device activity and writes useful Lumia variables:
-  - `device_id`
-  - `device_ip`
-  - `device_last_seen`
-  - `device_rssi`
-  - `device_connected`
-  - `seq`
-  - `held_ms` when available
-
-✅ **Key label mapping**
-- Adds **Key labels (0–35)** as a single shared list.
-- Adds `key_label` variable for easier alert text, overlays, and templates.
-
-🔁 **Reliability improvements retained**
-- Continues support for sequence ACK responses and duplicate-event protection introduced in v2.
-
-⚠️ Compatibility
-- Works with:
-  - Legacy `{event:N}`
-  - Newer payloads with `seq`, `deviceId`, and related metadata
-
----
-
-## v2.0 (Seq ACK + /health + Dedupe)
-✅ **Plugin `/health` endpoint**
-- Adds `GET /health` so the listener can be checked directly.
-
-✅ **Sequence ACK support**
-- On `POST /event`, replies with JSON confirmation when a sequence number is provided:
-  - `{ ok: true, seq: <echo> }`
-- Enables confirmed delivery mode on compatible firmware.
-
-✅ **Duplicate-event protection**
-- Deduplicates repeated events using `(deviceId, seq)` when available.
-- Prevents double-triggering if the ESP retries an event after a timeout or missed response.
-
-⚠️ Compatibility
-- Still accepts legacy `{event:N}` payloads.
-- If `seq` is absent, the plugin behaves like the earlier version but with safer response handling.
-
----
-
-## v1.0 (Initial Integrated Plugin)
-✅ **First combined plugin**
-- Introduces a single integrated plugin that:
-  - Listens for ESP button events at `POST /event`
-  - Triggers two alert groups:
-    - Short press
-    - Long press
-  - Supports 36 key variations for each group
-  - Provides TFT actions for device display control
-
-✅ **TFT actions**
-- Display Message
-- Status Message
-- Clear Screen
-
-✅ **Legacy display compatibility**
-- Supports legacy TFT endpoints:
-  - `/msg`
-  - `/status`
-  - `/clear`
-- Includes optional support for `POST /ui` for newer display workflows and future expansion.
-
-⚠️ Compatibility
-- Designed around the original ESP event scheme:
-  - `event: 0..35` = short press
-  - `event: 36..71` = long press (`key + 36`)
-
----
-
-# Between Versions Summary
-
-- **v1 → v2**
-  - Added plugin health checks, sequence ACK responses, and duplicate-event protection so confirmed delivery became possible without double-triggering.
-
-- **v2 → v3**
-  - Improved onboarding, added useful device variables, and introduced key labels for cleaner alerting and easier setup.
-
-- **v3 → v4**
-  - Split key labels into separate short-press and long-press maps for a clearer two-layer control model.
-
-- **v4 → v5**
-  - Added offline detection and `device_status_text` for cleaner overlays, support visibility, and device-state reporting.
-
-- **v5 → v5.1**
-  - Added optional debug toasts with throttling for diagnostics and support workflows.
-
-- **v5.1 → v5.2**
-  - Fixed reboot-related sequence dedupe handling so valid events are no longer suppressed after device restart.
-
----
-
-# Notes
-
-- **v5.2** includes all v5.1 functionality.
-- v5.2 is primarily a **reliability / maintenance release**, not a feature reset.
-- The plugin continues to support both:
-  - legacy event-only firmware
-  - newer confirmed-delivery firmware with `seq` and `deviceId`
+* Added silent health-check support using the device status endpoint.
+* Changed the idle/offline flow so the plugin performs a silent `/status?silent=1` check before marking the device offline.
+* Added in-flight protection for the offline probe.
+* Added helpers for base URL, timeout, and status-path handling.
+* Updated unload behavior to silently clear device-connected state.
+* Updated settings help text to document silent health checks and their dependency on the ESP base URL.
+* Updated action and settings tutorials to explain the new health-check behavior.
