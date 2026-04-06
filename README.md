@@ -440,6 +440,6 @@ The current plugin line performs one silent health check first. If you still see
 
 ---
 
-## Suggested public summary
+## Summary
 
 **Lumi-Con 6×6 Matrix Mini is a 36-key open-source stream controller with an integrated TFT display, browser-based device setup, Lumia plugin support, virtual pet features, and flexible display/status workflows for streams and automations.**
