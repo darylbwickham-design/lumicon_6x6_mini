@@ -47,7 +47,7 @@ Lumi-Con now supports a phone-first Wi-Fi setup flow.
 
 This removes the need to edit source code just to change the host address.
 
-The newest firmware source entry for this flow is `Firmware/lumicon_6x6_mini_v1_1_4/lumicon_6x6_mini_v1_1_4.ino`.
+The newest firmware entry for this flow is `Firmware/lumicon_6x6_mini_v1_1_4/lumicon_6x6_mini_v1_1_4.ino`, with the compiled `FLASH_THIS_lumicon_6x6_mini_v1.1.4.bin` build included under its `build/esp8266.esp8266.d1_mini_clone` folder.
 
 ---
 
