@@ -5,10 +5,10 @@
 ## Quick checklist
 1. Install the plugin in Lumia.
 2. Download and flash the amended firmware.
-3. Power the device and complete Wi-Fi setup with a mobile phone:
+3. Power the device and complete Wi-Fi setup with a mobile phone, not the streaming PC:
    - connect the phone to `Lumi-Con-Setup`
-   - tap the phone's Wi-Fi sign-in notification, or open `192.168.4.1`
-   - do not use the streaming PC browser for first-time Wi-Fi setup
+   - tap the phone's Wi-Fi sign-in notification, or open the phone's browser at `192.168.4.1`
+   - enter your normal Wi-Fi details on the phone setup page
 4. In plugin settings, enter **ESP Base URL** first, for example:
    - `http://192.168.1.50`
 5. Click **Save**.

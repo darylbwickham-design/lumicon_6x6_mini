@@ -1956,7 +1956,7 @@ void setup() {
     uiMode = UI_MODE_PET;
   }
 
-  drawBootSplash("WiFi setup");
+  drawBootSplash("Phone setup");
   WiFiManager wm;
   wm.setDebugOutput(false);
   wm.setConfigPortalTimeout(180);

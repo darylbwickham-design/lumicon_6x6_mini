@@ -4504,7 +4504,7 @@ void drawBootSplash(const char* msg) {
 
 void onWiFiConfigMode(WiFiManager *wm) {
   (void)wm;
-  drawBootSplash("WiFi setup");
+  drawBootSplash("Phone setup");
 }
 
 void fullUiInit() {

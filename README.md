@@ -1,6 +1,6 @@
 # Lumi-Con 6×6 Matrix Mini v1.1.0
 
-A 36-key open-source stream controller with an integrated ST7735 TFT display, browser-based device setup, Lumia plugin support, and optional virtual pet features.
+A 36-key open-source stream controller with an integrated ST7735 TFT display, phone-first device setup, Lumia plugin support, and optional virtual pet features.
 
 This project uses:
 
@@ -47,11 +47,11 @@ If you are using the newer plugin packages, treat these as the current progressi
 
 ## Main features
 
-### Easy browser-based setup
+### Easy phone-based setup
 
 On first boot, the ESP firmware can create a setup access point named **`Lumi-Con-Setup`**.
 
-Connect to it and open:
+Use a mobile phone for first-time Wi-Fi setup, not the streaming PC or desktop browser. On your phone, connect to the setup Wi-Fi network, then tap the phone's Wi-Fi sign-in notification or open the phone's browser at:
 
 `http://192.168.4.1`
 
@@ -59,7 +59,7 @@ From there you can join the device to your Wi-Fi network without editing the fir
 
 ### Browser-based plugin host pairing
 
-Once the device is on your network, you can set the Lumia/plugin host from a browser instead of recompiling the ESP sketch.
+Once the device is already on your normal Wi-Fi network, you can set the Lumia/plugin host from any browser on the same network instead of recompiling the ESP sketch.
 
 Use:
 
@@ -255,13 +255,15 @@ If you use source:
 ### Step 1: connect the ESP to Wi-Fi
 
 1. Power the device
-2. Connect to the access point:
+2. On your mobile phone, open Wi-Fi settings and connect to the access point:
    - **`Lumi-Con-Setup`**
-3. Open:
+3. Tap the phone's Wi-Fi sign-in notification. If it does not appear, open the phone's browser and go to:
    - **`http://192.168.4.1`**
 4. Select your Wi-Fi network and enter the password
 5. Save
 6. The ESP reboots and the display shows its IP address
+
+Use the phone for this captive-portal step. A desktop or streaming PC browser is more likely to stay on your normal network and miss the device setup page.
 
 ### Step 2: install and configure the Lumia plugin
 
@@ -287,7 +289,7 @@ Recommended defaults:
 
 ### Step 3: pair the device with the plugin host
 
-From a browser on the same network, run:
+After phone Wi-Fi setup is finished and the device shows its IP address, run this from a browser on the same network:
 
 `http://<device-ip>/plugin?host=<pc-ip>`
 
@@ -426,7 +428,7 @@ Disconnect `Pico GP0 (TX) -> ESP RX (GPIO3)` while flashing the ESP8266.
 ### Lumia can receive key events but cannot send text or pet commands
 
 - Set **ESP Base URL** in plugin settings to the device address
-- Check `/health` and `/status` in a browser
+- Check `/health` and `/status` in a browser on the same network after phone setup is complete
 - Confirm the device IP did not change after a reboot
 
 ### The plugin looks “offline” after idle time
@@ -442,4 +444,4 @@ The current plugin line performs one silent health check first. If you still see
 
 ## Summary
 
-**Lumi-Con 6×6 Matrix Mini is a 36-key open-source stream controller with an integrated TFT display, browser-based device setup, Lumia plugin support, virtual pet features, and flexible display/status workflows for streams and automations.**
+**Lumi-Con 6×6 Matrix Mini is a 36-key open-source stream controller with an integrated TFT display, phone-first Wi-Fi setup, Lumia plugin support, virtual pet features, and flexible display/status workflows for streams and automations.**

@@ -5532,14 +5532,14 @@ void onWiFiConfigMode(WiFiManager *wm) {
   tft.print(F("2 Tap sign-in popup"));
   tft.setCursor(12, 90);
   tft.setTextColor(COLOR_DIM, COLOR_BG);
-  tft.print(F("or open browser:"));
+  tft.print(F("or phone browser:"));
   tft.setCursor(12, 102);
   tft.setTextColor(COLOR_ACCENT, COLOR_BG);
   tft.print(F("192.168.4.1"));
 
   tft.setCursor(5, 119);
   tft.setTextColor(COLOR_BAD, COLOR_BG);
-  tft.print(F("Do not use the PC browser"));
+  tft.print(F("No desktop browser"));
 
   tft.setTextWrap(false);
 }

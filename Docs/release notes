@@ -6,7 +6,7 @@ This document focuses on the **current user-facing platform** and ignores older 
 
 ## What Lumi-Con is
 
-Lumi-Con is a 36-key stream controller with an integrated TFT display, Lumia plugin support, browser-based setup, virtual pet features, health-aware device monitoring, and optional LCD-only display behavior.
+Lumi-Con is a 36-key stream controller with an integrated TFT display, Lumia plugin support, phone-first Wi-Fi setup, virtual pet features, health-aware device monitoring, and optional LCD-only display behavior.
 
 It is designed to work as:
 
@@ -21,8 +21,8 @@ It is designed to work as:
 
 The current Lumi-Con platform provides:
 
-* browser-based Wi-Fi setup
-* browser-based plugin host setup
+* phone-first Wi-Fi setup
+* browser-based plugin host setup after phone Wi-Fi setup
 * TFT display actions for chat and status output
 * a local HTTP API for testing and integration
 * virtual pet support on the device and in Lumia
@@ -36,10 +36,10 @@ The current Lumi-Con platform provides:
 
 ### Easy setup
 
-Lumi-Con now supports a browser-based setup flow.
+Lumi-Con now supports a phone-first Wi-Fi setup flow.
 
-* Connect to the **`Lumi-Con-Setup`** access point
-* Open **`http://192.168.4.1`**
+* On your mobile phone, connect to the **`Lumi-Con-Setup`** access point
+* Tap the phone's Wi-Fi sign-in notification, or open the phone's browser at **`http://192.168.4.1`**
 * Enter Wi-Fi details
 * Configure the plugin host with:
 
@@ -142,12 +142,12 @@ This helps prevent false offline states during normal idle periods.
 
 1. Flash the current firmware.
 2. Power the device.
-3. Connect to **`Lumi-Con-Setup`** if Wi-Fi is not configured.
-4. Open **`http://192.168.4.1`**.
+3. On your mobile phone, connect to **`Lumi-Con-Setup`** if Wi-Fi is not configured.
+4. Tap the phone's Wi-Fi sign-in notification, or open the phone's browser at **`http://192.168.4.1`**.
 5. Enter Wi-Fi details.
 6. Note the device IP after it joins the network.
 7. Install and configure the Lumia plugin.
-8. From a browser on the same network, run:
+8. After phone setup is complete, from a browser on the same network, run:
 
    * `http://<device-ip>/plugin?host=<pc-ip>`
 9. Test key events, display actions, and pet actions.
@@ -169,4 +169,4 @@ For most users, the important changes are simple:
 
 ## summary
 
-**Lumi-Con is a 36-key open-source stream controller with an integrated TFT display, browser-based setup, Lumia plugin support, virtual pet features, and flexible runtime modes for chat, display, and automation workflows.**
+**Lumi-Con is a 36-key open-source stream controller with an integrated TFT display, phone-first Wi-Fi setup, Lumia plugin support, virtual pet features, and flexible runtime modes for chat, display, and automation workflows.**

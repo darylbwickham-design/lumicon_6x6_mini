@@ -12,7 +12,10 @@ https://www.youtube.com/watch?v=UeyQVr_ehtY&list=PLqOF0QEQ86SRTQ2jzz_a06AIdHnLY1
 ## Quick checklist
 1. Install the plugin in Lumia.
 2. Download and flash the firmware from the GitHub repo.
-3. Power the device and complete Wi-Fi setup.
+3. Power the device and complete Wi-Fi setup with a mobile phone, not the streaming PC:
+   - connect the phone to `Lumi-Con-Setup`
+   - tap the phone's Wi-Fi sign-in notification, or open the phone's browser at `192.168.4.1`
+   - enter your normal Wi-Fi details on the phone setup page
 4. In plugin settings, enable the listener and confirm the port.
 5. If your device shows a mode prompt on boot: select Confirmed mode for best reliability.
 

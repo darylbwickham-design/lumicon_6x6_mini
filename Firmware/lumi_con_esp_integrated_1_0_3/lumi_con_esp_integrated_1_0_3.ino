@@ -5033,7 +5033,7 @@ void onWiFiConfigMode(WiFiManager *wm) {
 
   tft.setCursor(0, 34);
   tft.setTextColor(COLOR_FG, COLOR_BG);
-  tft.println(F("1. Connect to AP:"));
+  tft.println(F("1. Phone Wi-Fi:"));
 
   tft.setCursor(10, 44);
   tft.setTextColor(COLOR_ACCENT, COLOR_BG);
@@ -5041,7 +5041,7 @@ void onWiFiConfigMode(WiFiManager *wm) {
 
   tft.setCursor(0, 68);
   tft.setTextColor(COLOR_FG, COLOR_BG);
-  tft.println(F("2. In your browser go to:"));
+  tft.println(F("2. Phone browser:"));
 
   tft.setCursor(10, 78);
   tft.setTextColor(COLOR_ACCENT, COLOR_BG);
