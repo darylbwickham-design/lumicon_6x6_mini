@@ -1,0 +1,4 @@
+References,Qty,Value,Footprint,Side
+SW1-SW36,36,Kailh CPG151101S11 hot-swap socket,SW_Hotswap_Kailh_1.00u,Bottom
+D1-D36,36,1N4148W,D_SOD-123,Bottom
+J1,1,1x12 2.54 mm header,PinHeader_1x12_P2.54mm,Through-hole

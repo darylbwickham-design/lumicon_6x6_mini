@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "LumiCon_R5")(type "KiCad")(uri "${KIPRJMOD}/LumiCon_R5.pretty")(options "")(descr "Lumi-Con R5 footprints"))
+)

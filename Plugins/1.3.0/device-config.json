@@ -1,0 +1,8 @@
+{
+  "displayName": "Lumi-Con 6×6 Mini",
+  "logName": "Lumi-Con 6x6 Mini",
+  "keyCount": 36,
+  "listenPort": 8787,
+  "shortAlertKey": "matrix_6x6_short",
+  "longAlertKey": "matrix_6x6_long"
+}
