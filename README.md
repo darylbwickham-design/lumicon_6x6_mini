@@ -31,7 +31,7 @@ The ESP8266 exposes local HTTP endpoints so Lumia can send text, status updates,
 Use this combination as the current baseline:
 
 - **Pico firmware:** `6x6_test_pico.ino` or UF2 built from it
-- **ESP firmware:** `lumi_con_esp_integrated_0_4_2.ino`
+- **ESP firmware:** `lumicon_6x6_mini_v1_1_4.ino`
 - **Lumia plugin:** `6x6_matrix_mini_v1_1_3.lumiaplugin`
 
 ### Plugin naming note

@@ -193,7 +193,14 @@
 * Replaced the plain-text root endpoint with a simple HTML API landing page.
 * Expanded `/health` with free-heap and formatted uptime reporting.
 * Expanded mode reporting to include `lcdOnly`.
-* Refined the Wi-Fi setup presentation, including the AP name `Lumi-Con-Setup` and clearer `http://192.168.4.1` browser instructions.
+* Refined the Wi-Fi setup presentation, including the AP name `Lumi-Con-Setup` and clearer phone-browser instructions for `http://192.168.4.1`.
+
+### 1.1.4
+
+* Added a new `lumicon_6x6_mini_v1_1_4` firmware source entry based on the supplied `1.1.3` sketch.
+* Bumped the firmware version constants from `1.1.3` to `1.1.4`.
+* Tightened the on-device Wi-Fi setup wording to say `phone browser` and `No desktop browser`.
+* Kept the phone-first setup flow, including `Lumi-Con-Setup`, the phone sign-in popup, and the `192.168.4.1` fallback address.
 
 ---
 
