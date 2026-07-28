@@ -1,0 +1,13 @@
+J1 pin,PCB net,Pico GPIO,Purpose
+1,COL0,GP6,scanned column 0 / physical horizontal row 0
+2,ROW0,GP12,input row 0 / physical vertical column 0
+3,COL1,GP7,scanned column 1 / physical horizontal row 1
+4,ROW1,GP1,input row 1 / physical vertical column 1
+5,COL2,GP8,scanned column 2 / physical horizontal row 2
+6,ROW2,GP2,input row 2 / physical vertical column 2
+7,COL3,GP9,scanned column 3 / physical horizontal row 3
+8,ROW3,GP3,input row 3 / physical vertical column 3
+9,COL4,GP10,scanned column 4 / physical horizontal row 4
+10,ROW4,GP4,input row 4 / physical vertical column 4
+11,COL5,GP11,scanned column 5 / physical horizontal row 5
+12,ROW5,GP5,input row 5 / physical vertical column 5
