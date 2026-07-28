@@ -3197,7 +3197,7 @@ void setup() {
     ESP.restart();
   }
 
-  transientStatus = "WiFi setup...";
+  transientStatus = "Phone setup...";
   updateHeaderLine1(true);
 
   WiFiManager wm;

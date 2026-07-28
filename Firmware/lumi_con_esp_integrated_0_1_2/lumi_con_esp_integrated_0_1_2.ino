@@ -2055,7 +2055,7 @@ void setup() {
     ESP.restart();
   }
 
-  drawBootSplash("WiFi setup");
+  drawBootSplash("Phone setup");
   WiFiManager wm;
   wm.setDebugOutput(false);
   wm.setConfigPortalTimeout(180);

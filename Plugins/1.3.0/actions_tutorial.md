@@ -11,7 +11,7 @@ What it sends:
 - `http://<device-ip>/plugin?host=<pc-ip>`
 
 Best for:
-- first-time setup retry
+- phone setup retry after Wi-Fi or network changes
 - reconnecting after network changes
 - forcing the device to refresh which PC it should talk to
 

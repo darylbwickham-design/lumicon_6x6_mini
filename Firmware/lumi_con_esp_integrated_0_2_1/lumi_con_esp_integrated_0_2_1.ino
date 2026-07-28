@@ -1794,7 +1794,7 @@ void setup() {
     petModeEnabled = false;
   }
 
-  drawBootSplash("WiFi setup");
+  drawBootSplash("Phone setup");
   WiFiManager wm;
   wm.setDebugOutput(false);
   wm.setConfigPortalTimeout(180);

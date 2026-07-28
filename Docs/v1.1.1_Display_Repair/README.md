@@ -29,8 +29,9 @@ endpoints, EEPROM layout and Lumia listener port.
 
 ## Test after flashing
 
-1. Open the controller address in a browser and run Confetti, Pulse and
-   Success from **Test Celebrations**.
+1. After phone Wi-Fi setup is complete, open the controller address in a
+   browser on the same network and run Confetti, Pulse and Success from
+   **Test Celebrations**.
 2. Each effect should appear immediately, animate without whole-screen black
    flashes, and return to a complete Chat or Pet screen.
 3. Run the Lumia **Display: Celebration** action. A bad address, old firmware

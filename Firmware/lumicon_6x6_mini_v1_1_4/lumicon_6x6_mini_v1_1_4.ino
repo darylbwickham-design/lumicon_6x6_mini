@@ -1,43 +1,60 @@
 /*
   ============================================================================
-  Lumi-Con ESP8266 Pet Firmware v0.2.10
+  Lumi-Con 6x6 Mini Firmware v1.1.4
   ============================================================================
-  Boot splash restore update for the integrated firmware branch
 
   What this version is
   ---------------------------------------------------------------------------
-  v0.2.10 sets chat mode as the default run mode, keeps pet mode hidden
-  unless explicitly selected at boot, and preserves the existing firmware
-  behavior outside that boot and mode-selection flow.
+  v1.1.0 is the polished, compatibility-first upgrade to the 1.0 release.
+  It keeps the 1.0 wiring, Pico packet protocol, Lumia event numbers, HTTP
+  endpoints, EEPROM layout, display rotation, pet state and plugin port.
 
   Boot key behavior
   ---------------------------------------------------------------------------
-  - Hold Pico key 0 at boot -> reset Wi-Fi settings and restart
-  - Hold Pico key 1 at boot -> Chat mode (no pet, Lumia messages only)
+  - Hold Pico key 0 at boot -> reset Wi-Fi and open phone setup immediately
+  - Hold Pico key 1 at boot -> Chat mode (explicit default selection)
   - Hold Pico key 2 at boot -> noPet Debug mode
+  - Hold Pico key 35 at boot -> pet mode
 
   Boot presentation order
   ---------------------------------------------------------------------------
   1. Lumi-Con logo
   2. 6x6 Matrix Mini logo
   3. Welcome
-  4. Boot options
+  4. Visible boot options with live hold progress
+  5. Wi-Fi / run mode
 
   HTTP endpoints
   ---------------------------------------------------------------------------
     GET  /msg?t=Hello
-    GET  /status?t=OK
+    GET  /status?t=OK&color=green
     GET  /clear
-    POST /ui {"channel":"chat|status|clear","text":"..."}
+    POST /ui {"channel":"chat|status|clear","text":"...","color":"red|green|yellow"}
     GET  /health
     GET  /pet?action=status|sync|feed|play|clean|sleep|med|toggleSleep|discipline|reset
+    GET  /celebrate?style=confetti|pulse|success&text=...&color=...&durationMs=...
+    GET  /mode?set=chat|pet|debug
 
   Change summary
   ---------------------------------------------------------------------------
-  - Keeps the boot flow to logo 1 -> logo 2 -> welcome -> run mode
+  - Gives Confetti, Pulse and Success distinct motion without style labels
+  - Uses elapsed-time animation so network stalls do not alter effect speed
+  - Removes intermediate Chat/Pet/Debug frames from startup and mode changes
+  - Reveals the final run screen once, after the transition completes
+  - Fixes celebrations ending early when started by an HTTP request
+  - Actually displays the boot options that existed but were never called in 1.0
+  - Makes every boot selection visible and shows live hold progress
+  - Explicitly tells first-time users to use a mobile phone, not a PC browser
+  - Uses incremental screen celebrations: no full-screen redraw every frame
+  - Restores the complete normal UI after a celebration (including Pet headers)
+  - Reworks the small-screen layout with panels, badges and clearer hierarchy
+  - Adds runtime Chat / Pet / Diagnostics switching without a reboot
+  - Adds a practical browser dashboard for testing and diagnostics
   - Default run mode is chat mode
   - Hidden pet mode is selected by holding key 35 at boot
   - Pet logic remains frozen unless pet mode is selected
+  - Adds GET /plugin for viewing/changing the configured plugin host
+  - Stores the plugin host in EEPROM so it persists across reboot
   ============================================================================
 */
 
@@ -57,19 +74,24 @@
 // 1. CONFIGURATION
 // ============================================================================
 
-const char* PLUGIN_HOST = "192.168.1.87";
+const char* DEFAULT_PLUGIN_HOST = "192.168.1.87";
 constexpr uint16_t PLUGIN_PORT = 8787;
 const char* PLUGIN_SECRET = "";
+
+constexpr uint8_t FW_VERSION_MAJOR = 1;
+constexpr uint8_t FW_VERSION_MINOR = 1;
+constexpr uint8_t FW_VERSION_PATCH = 4;
 
 constexpr uint32_t PICO_BAUD = 115200;
 constexpr uint8_t KEY_COUNT = 36;
 constexpr uint32_t LONG_PRESS_MS = 600;
 
 constexpr uint8_t FACTORY_RESET_KEY = 0;
+constexpr uint8_t CHAT_MODE_BOOT_KEY = 1;
 constexpr uint8_t PET_MODE_BOOT_KEY = 35;
 constexpr uint8_t NOPET_DEBUG_BOOT_KEY = 2;
-constexpr uint32_t BOOT_HOLD_MS = 1200;
-constexpr uint32_t BOOT_HOLD_WINDOW_MS = 2500;
+constexpr uint32_t BOOT_HOLD_MS = 900;
+constexpr uint32_t BOOT_HOLD_WINDOW_MS = 4200;
 
 constexpr uint32_t SPLASH_LUMICON_MS = 900;
 constexpr uint32_t SPLASH_MATRIX_MS = 900;
@@ -112,6 +134,9 @@ constexpr uint32_t SPLASH_BOOTOPTIONS_MS = 1200;
 constexpr uint16_t EEPROM_BYTES = 256;
 constexpr uint32_t PET_MAGIC = 0x50455431UL; // PET1
 constexpr uint16_t PET_VERSION = 4;
+constexpr uint32_t CONFIG_MAGIC = 0x43464731UL; // CFG1
+constexpr size_t CONFIG_EEPROM_OFFSET = 128;
+constexpr size_t PLUGIN_HOST_MAX_LEN = 40;
 
 constexpr uint16_t SCREEN_W = 160;
 constexpr uint16_t SCREEN_H = 128;
@@ -125,13 +150,17 @@ constexpr uint32_t HEADER_TOAST_MS = 2000;
 // Dedicated message page hold time in pet mode only.
 // Edit this value if you want Lumia messages/status text to stay visible longer/shorter.
 constexpr uint32_t MESSAGE_PAGE_HOLD_MS = 6000;
+constexpr uint16_t CELEBRATION_DEFAULT_MS = 1800;
+constexpr uint16_t CELEBRATION_MIN_MS = 600;
+constexpr uint16_t CELEBRATION_MAX_MS = 5000;
 
 constexpr uint8_t TEXT_PAGE_HISTORY_LINES = 15;
 constexpr uint32_t GAME_TICK_MS = 1000;
-constexpr uint32_t ANIM_TICK_MS = 220;
+constexpr uint32_t ANIM_TICK_MS = 110;
 constexpr uint32_t STATUS_ROTATE_MS = 3500;
 constexpr uint32_t SAVE_DEFER_MS = 4000;
 constexpr uint32_t WIFI_RETRY_MS = 15000;
+constexpr uint32_t DISPLAY_SPI_HZ = 20000000;
 
 constexpr uint8_t PET_ALERT_BASE = 72;
 constexpr uint8_t PET_CHANGE_EVENT_COUNT = 22;
@@ -150,6 +179,10 @@ constexpr uint16_t COLOR_WARN   = RGB565_PANEL(255, 255, 0);
 constexpr uint16_t COLOR_BAD    = RGB565_PANEL(255, 0, 0);
 constexpr uint16_t COLOR_GOOD   = RGB565_PANEL(0, 255, 0);
 constexpr uint16_t COLOR_BROWN  = RGB565_PANEL(139, 69, 19);
+constexpr uint16_t COLOR_PANEL  = RGB565_PANEL(8, 18, 30);
+constexpr uint16_t COLOR_PANEL2 = RGB565_PANEL(13, 32, 48);
+constexpr uint16_t COLOR_PINK   = RGB565_PANEL(255, 72, 166);
+constexpr uint16_t COLOR_GOLD   = RGB565_PANEL(255, 180, 28);
 
 constexpr uint8_t HEADER_LINES = 2;
 constexpr uint8_t HEADER_H = HEADER_LINES * LINE_H;
@@ -167,6 +200,9 @@ constexpr int FOOTER_Y = SCREEN_H - 10;
 Adafruit_ST7735 tft(TFT_CS, TFT_DC, TFT_RST);
 ESP8266WebServer server(80);
 String deviceId;
+String pluginHost = DEFAULT_PLUGIN_HOST;
+GFXcanvas16* petCanvas = nullptr;
+bool petCanvasReady = false;
 
 // ============================================================================
 // 2. LOW-OVERHEAD HELPER FUNCTIONS
@@ -2676,6 +2712,27 @@ String truncateCols(const String& s) {
   return s.substring(0, MAX_COLS);
 }
 
+
+void initPetCanvas() {
+  if (petCanvasReady) return;
+  petCanvasReady = true;
+
+  static GFXcanvas16 canvas(PET_AREA_W, PET_AREA_H);
+  petCanvas = &canvas;
+  if (!petCanvas->getBuffer()) {
+    petCanvas = nullptr;
+    Serial.println(F("petCanvas alloc failed, using direct sprite render"));
+  }
+}
+
+String firmwareVersionDot() {
+  return String(FW_VERSION_MAJOR) + "." + String(FW_VERSION_MINOR) + "." + String(FW_VERSION_PATCH);
+}
+
+String firmwareVersionTag() {
+  return String(FW_VERSION_MAJOR) + "_" + String(FW_VERSION_MINOR) + "_" + String(FW_VERSION_PATCH);
+}
+
 String urlDecode(const String& in) {
   String out;
   out.reserve(in.length());
@@ -2741,6 +2798,13 @@ struct SaveBlob {
   uint16_t version;
   uint16_t length;
   PetState pet;
+  uint16_t crc;
+};
+
+struct PluginConfigBlob {
+  uint32_t magic;
+  uint16_t length;
+  char host[PLUGIN_HOST_MAX_LEN];
   uint16_t crc;
 };
 
@@ -2816,6 +2880,7 @@ struct PetTransitionEvent {
 enum BootMode : uint8_t {
   BOOT_MODE_NORMAL = 0,
   BOOT_MODE_WIFI_RESET,
+  BOOT_MODE_CHAT,
   BOOT_MODE_PET,
   BOOT_MODE_NOPET_DEBUG
 };
@@ -2823,7 +2888,8 @@ enum BootMode : uint8_t {
 enum UiMode : uint8_t {
   UI_MODE_PET = 0,
   UI_MODE_CHAT,
-  UI_MODE_NOPET_DEBUG
+  UI_MODE_NOPET_DEBUG,
+  UI_MODE_LCD_ONLY
 };
 
 UiMode uiMode = UI_MODE_CHAT;
@@ -2879,7 +2945,8 @@ uint16_t moodColor(uint8_t v);
 void drawBar(int x, int y, int w, uint8_t value, uint16_t color, uint8_t index);
 void drawHudLine(int row, const String& text, String& cache, uint16_t fg = COLOR_FG);
 void clearPetArea();
-void drawPoop(int x, int y);
+void drawPoop(Adafruit_GFX &gfx, int x, int y);
+void initPetCanvas();
 void drawPetSprite();
 void drawFooter();
 void drawHudAndBars();
@@ -2891,8 +2958,13 @@ void drawLumiconLogoPage();
 void drawMatrixMiniLogoPage();
 void drawWelcomePage();
 void drawBootOptionsPage();
+void drawBootOptionRows(int8_t selectedKey);
+void drawBootSelection(int8_t selectedKey, uint8_t holdPercent, uint16_t remainingMs);
+void wipeTransition(uint16_t color);
+void drawNetworkResultPage(bool connected);
 
 void appendTextPageMessage(const String& msgRaw);
+void appendTextPageMessage(const String& msgRaw, uint16_t color);
 void addNoPetWelcomeLines();
 void refreshNoPetPage(bool resetHistory);
 void showTextPage(uint32_t ttlMs);
@@ -2907,24 +2979,49 @@ void handleUi();
 String petStatusJson();
 void handlePet();
 void handleHealth();
+void handlePlugin();
+void handleCelebrate();
+void handleMode();
+bool isValidPluginHost(const String& host);
+bool loadPluginConfig();
+void savePluginConfig();
+void resetPluginConfig();
 
 void ensureWiFi(uint32_t now);
 void drawBootSplash(const char* msg);
 void onWiFiConfigMode(WiFiManager *wm);
-void fullUiInit();
+void fullUiInit(bool resetFeed = true);
 void servicePetTiming(uint32_t now);
 void servicePicoEvents();
+void serviceLongPressIndicator(uint32_t now);
 void renderNoPetHeader(bool force = false);
 void renderNoPetBody(bool force = false);
 void buildWrappedLines(const String& msgRaw, String* outLines, uint8_t& outCount);
 void insertTopWrappedMessageNoPet(const String& msgRaw);
+void insertTopWrappedMessageNoPet(const String& msgRaw, uint16_t color);
+uint16_t parseStatusColor(const String& raw);
+String formatStatusDisplayText(const String& text);
+void transmitPetStatusSerial();
+void startCelebration(const String& text, const String& style, uint16_t color, uint16_t durationMs = CELEBRATION_DEFAULT_MS);
+void serviceCelebration(uint32_t now);
+uint16_t parseCelebrationColor(const String& raw);
+uint16_t parseCelebrationDuration(const String& raw);
+const char* currentUiModeName();
+bool setRuntimeUiMode(const String& requestedMode, bool showFeedback);
 
 inline bool petModeEnabled() {
-  return uiMode == UI_MODE_PET;
+  return uiMode == UI_MODE_PET || uiMode == UI_MODE_LCD_ONLY;
 }
 
 inline bool noPetModeActive() {
-  return uiMode != UI_MODE_PET;
+  return !petModeEnabled();
+}
+
+const char* currentUiModeName() {
+  if (uiMode == UI_MODE_PET) return "pet";
+  if (uiMode == UI_MODE_NOPET_DEBUG) return "debug";
+  if (uiMode == UI_MODE_LCD_ONLY) return "lcdOnly";
+  return "chat";
 }
 
 inline void resetPet() {
@@ -2959,6 +3056,308 @@ void serviceLed(uint32_t now) {
 }
 
 // ============================================================================
+// 5A. NON-BLOCKING CELEBRATIONS
+// ============================================================================
+
+enum CelebrationStyle : uint8_t {
+  CELEBRATE_CONFETTI = 0,
+  CELEBRATE_PULSE,
+  CELEBRATE_SUCCESS
+};
+
+bool celebrationActive = false;
+CelebrationStyle celebrationStyle = CELEBRATE_CONFETTI;
+String celebrationText = "NICE!";
+uint16_t celebrationColor = COLOR_ACCENT;
+uint16_t celebrationDurationMs = CELEBRATION_DEFAULT_MS;
+uint32_t celebrationStartedMs = 0;
+uint32_t celebrationLastFrameMs = 0;
+uint16_t celebrationFrame = 0;
+
+// The text-page state is defined in the UI section below. Celebration startup
+// can extend an active message timer, so its declarations are needed here.
+extern bool textPageActive;
+extern uint32_t textPageUntilMs;
+
+// The ST7735 has no full-screen framebuffer. Each style therefore redraws
+// only its moving pixels plus the small message surface it overlaps.
+constexpr uint32_t CELEBRATION_FRAME_MS = 33;
+constexpr uint8_t CELEBRATION_PARTICLE_COUNT = 18;
+constexpr int CELEBRATION_CARD_X = 14;
+constexpr int CELEBRATION_CARD_W = 132;
+constexpr int CELEBRATION_CARD_Y = 46;
+constexpr int CELEBRATION_CARD_H = 36;
+constexpr int SUCCESS_CARD_Y = 34;
+constexpr int SUCCESS_CARD_H = 60;
+
+uint16_t parseCelebrationColor(const String& raw) {
+  String color = raw;
+  color.trim();
+  color.toLowerCase();
+  if (color == "green") return COLOR_GOOD;
+  if (color == "yellow" || color == "gold") return COLOR_GOLD;
+  if (color == "red") return COLOR_BAD;
+  if (color == "pink" || color == "magenta") return COLOR_PINK;
+  return COLOR_ACCENT;
+}
+
+uint16_t parseCelebrationDuration(const String& raw) {
+  if (!raw.length()) return CELEBRATION_DEFAULT_MS;
+  long requested = raw.toInt();
+  if (requested < CELEBRATION_MIN_MS) return CELEBRATION_MIN_MS;
+  if (requested > CELEBRATION_MAX_MS) return CELEBRATION_MAX_MS;
+  return (uint16_t)requested;
+}
+
+void drawCelebrationText(int textY, uint8_t textSize) {
+  const int textLeft = CELEBRATION_CARD_X + 8;
+  const int textRight = CELEBRATION_CARD_X + CELEBRATION_CARD_W - 8;
+
+  tft.setTextSize(textSize);
+  int16_t x1, y1;
+  uint16_t w, h;
+  tft.getTextBounds(celebrationText, 0, textY, &x1, &y1, &w, &h);
+  int textX = textLeft + ((textRight - textLeft - (int)w) / 2);
+  if (textX < textLeft) textX = textLeft;
+  if (textX + (int)w > textRight) textX = textRight - (int)w;
+
+  tft.setCursor(textX, textY);
+  tft.setTextColor(COLOR_FG, COLOR_PANEL);
+  tft.print(celebrationText);
+  tft.setTextSize(TEXT_SIZE);
+}
+
+void drawCelebrationCard() {
+  const int cardY = celebrationStyle == CELEBRATE_SUCCESS ? SUCCESS_CARD_Y : CELEBRATION_CARD_Y;
+  const int cardH = celebrationStyle == CELEBRATE_SUCCESS ? SUCCESS_CARD_H : CELEBRATION_CARD_H;
+  const uint8_t textSize = celebrationText.length() <= 9 ? 2 : TEXT_SIZE;
+  const int textY = celebrationStyle == CELEBRATE_SUCCESS
+      ? (textSize == 2 ? 73 : 78)
+      : (textSize == 2 ? 56 : 61);
+
+  tft.fillRoundRect(CELEBRATION_CARD_X + 2, cardY + 2,
+                    CELEBRATION_CARD_W, cardH, 8, COLOR_PANEL2);
+  tft.fillRoundRect(CELEBRATION_CARD_X, cardY,
+                    CELEBRATION_CARD_W, cardH, 8, COLOR_PANEL);
+  tft.drawRoundRect(CELEBRATION_CARD_X, cardY,
+                    CELEBRATION_CARD_W, cardH, 8, celebrationColor);
+  drawCelebrationText(textY, textSize);
+}
+
+void drawCelebrationScene() {
+  tft.fillScreen(COLOR_BG);
+  drawCelebrationCard();
+}
+
+bool celebrationParticleVisible(int x, int y, int w, int h) {
+  const int cardY = celebrationStyle == CELEBRATE_SUCCESS ? SUCCESS_CARD_Y : CELEBRATION_CARD_Y;
+  const int cardH = celebrationStyle == CELEBRATE_SUCCESS ? SUCCESS_CARD_H : CELEBRATION_CARD_H;
+  return x + w < CELEBRATION_CARD_X - 2 ||
+         x > CELEBRATION_CARD_X + CELEBRATION_CARD_W + 2 ||
+         y + h < cardY - 2 ||
+         y > cardY + cardH + 2;
+}
+
+void celebrationParticlePosition(uint8_t particle, uint16_t frame, int& x, int& y) {
+  const int8_t driftQ4 = (int8_t)((particle % 5) * 3) - 6;
+  const uint8_t fallQ4 = 12 + ((particle % 4) * 4);
+  int32_t xQ4 = (int32_t)(particle * 47 % SCREEN_W) * 16L +
+                (int32_t)frame * driftQ4;
+  const int32_t xSpanQ4 = SCREEN_W * 16L;
+  xQ4 %= xSpanQ4;
+  if (xQ4 < 0) xQ4 += xSpanQ4;
+  x = (int)(xQ4 >> 4);
+
+  const uint32_t yQ4 =
+      ((uint32_t)(particle * 83 % SCREEN_H) * 16UL) +
+      ((uint32_t)frame * fallQ4);
+  y = (int)((yQ4 >> 4) % SCREEN_H);
+}
+
+void drawCelebrationConfetti(uint16_t frame, bool erase) {
+  for (uint8_t i = 0; i < CELEBRATION_PARTICLE_COUNT; ++i) {
+    int x, y;
+    celebrationParticlePosition(i, frame, x, y);
+    const int w = 1 + (i & 1);
+    const int h = 2 + ((i + 1) & 1);
+    const int drawW = (i % 3) == 0 ? h + 1 : w;
+    if (!celebrationParticleVisible(x, y, drawW, h)) continue;
+
+    uint16_t color = COLOR_BG;
+    if (!erase) {
+      switch (i % 4) {
+        case 0: color = celebrationColor; break;
+        case 1: color = COLOR_GOLD; break;
+        case 2: color = COLOR_PINK; break;
+        default: color = COLOR_FG; break;
+      }
+    }
+    if ((i % 3) == 0) tft.drawFastHLine(x, y, h + 1, color);
+    else tft.fillRect(x, y, w, h, color);
+  }
+}
+
+void drawCelebrationPulseRings(uint16_t frame, bool erase) {
+  for (uint8_t ring = 0; ring < 3; ++ring) {
+    const uint8_t phase = (frame + ring * 18) % 54;
+    const int xInset = 12 - ((phase * 10) / 53);
+    const int yInset = 40 - ((phase * 38) / 53);
+    const uint16_t color = erase
+        ? COLOR_BG
+        : (phase < 36 ? celebrationColor : COLOR_DIM);
+    tft.drawRoundRect(xInset, yInset,
+                      SCREEN_W - (xInset * 2), SCREEN_H - (yInset * 2),
+                      9, color);
+  }
+}
+
+void drawSuccessSparkles(uint16_t frame, bool erase) {
+  static const uint8_t points[][2] = {
+    {20, 22}, {48, 15}, {80, 20}, {112, 15}, {140, 22},
+    {24, 107}, {52, 114}, {108, 114}, {136, 107}
+  };
+  const uint8_t count = sizeof(points) / sizeof(points[0]);
+
+  for (uint8_t i = 0; i < count; ++i) {
+    const int x = points[i][0];
+    const int y = points[i][1];
+    if (erase) {
+      tft.fillRect(x - 2, y - 2, 5, 5, COLOR_BG);
+      continue;
+    }
+    const uint8_t phase = (frame + i * 3) % 18;
+    if (phase >= 8) continue;
+    const uint16_t color = (i & 1) ? COLOR_GOLD : celebrationColor;
+    tft.drawFastHLine(x - 2, y, 5, color);
+    tft.drawFastVLine(x, y - 2, 5, color);
+    if (phase < 3) {
+      tft.drawPixel(x - 1, y - 1, COLOR_FG);
+      tft.drawPixel(x + 1, y + 1, COLOR_FG);
+    }
+  }
+}
+
+void drawSuccessMark(uint32_t elapsed) {
+  tft.fillRect(61, 38, 38, 31, COLOR_PANEL);
+
+  uint16_t growMs = elapsed > 240 ? 240 : (uint16_t)elapsed;
+  uint8_t radius = 3 + (growMs * 11UL) / 240UL;
+  tft.fillCircle(80, 53, radius, celebrationColor);
+
+  if (elapsed <= 220) return;
+  uint32_t markMs = elapsed - 220;
+  if (markMs > 430) markMs = 430;
+
+  const int x0 = 69;
+  const int y0 = 53;
+  const int x1 = 77;
+  const int y1 = 61;
+  const int x2 = 94;
+  const int y2 = 43;
+
+  if (markMs < 150) {
+    const int x = x0 + ((x1 - x0) * (int)markMs) / 150;
+    const int y = y0 + ((y1 - y0) * (int)markMs) / 150;
+    tft.drawLine(x0, y0, x, y, COLOR_BG);
+    tft.drawLine(x0 + 1, y0, x + 1, y, COLOR_BG);
+    return;
+  }
+
+  tft.drawLine(x0, y0, x1, y1, COLOR_BG);
+  tft.drawLine(x0 + 1, y0, x1 + 1, y1, COLOR_BG);
+  const uint32_t secondMs = markMs - 150;
+  const int x = x1 + ((x2 - x1) * (int)secondMs) / 280;
+  const int y = y1 + ((y2 - y1) * (int)secondMs) / 280;
+  tft.drawLine(x1, y1, x, y, COLOR_BG);
+  tft.drawLine(x1 + 1, y1, x + 1, y, COLOR_BG);
+}
+
+void restoreUiAfterCelebration() {
+  celebrationActive = false;
+  celebrationLastFrameMs = 0;
+
+  // Each destination renderer covers the full display, so the final UI can
+  // replace the effect directly without an intermediate black frame.
+  fullUiInit(false);
+}
+
+void startCelebration(const String& text, const String& style, uint16_t color, uint16_t durationMs) {
+  String selected = style;
+  selected.trim();
+  selected.toLowerCase();
+
+  if (selected == "pulse") celebrationStyle = CELEBRATE_PULSE;
+  else if (selected == "success") celebrationStyle = CELEBRATE_SUCCESS;
+  else celebrationStyle = CELEBRATE_CONFETTI;
+
+  celebrationText = text;
+  celebrationText.replace("\r", " ");
+  celebrationText.replace("\n", " ");
+  celebrationText.trim();
+  if (!celebrationText.length()) celebrationText = "NICE!";
+  const uint8_t maxCelebrationChars = 19;
+  if (celebrationText.length() > maxCelebrationChars) {
+    celebrationText = celebrationText.substring(0, maxCelebrationChars - 2) + "..";
+  }
+
+  celebrationColor = color;
+  celebrationDurationMs = durationMs;
+  if (celebrationDurationMs < CELEBRATION_MIN_MS) celebrationDurationMs = CELEBRATION_MIN_MS;
+  if (celebrationDurationMs > CELEBRATION_MAX_MS) celebrationDurationMs = CELEBRATION_MAX_MS;
+  celebrationStartedMs = millis();
+  if (petModeEnabled() && textPageActive && textPageUntilMs != 0 &&
+      (int32_t)(textPageUntilMs - celebrationStartedMs) > 0) {
+    textPageUntilMs += celebrationDurationMs;
+  }
+  celebrationLastFrameMs = celebrationStartedMs;
+  celebrationFrame = 0;
+  celebrationActive = true;
+
+  drawCelebrationScene();
+  if (celebrationStyle == CELEBRATE_CONFETTI) {
+    drawCelebrationConfetti(0, false);
+  } else if (celebrationStyle == CELEBRATE_PULSE) {
+    drawCelebrationPulseRings(0, false);
+  } else {
+    drawSuccessMark(0);
+  }
+}
+
+void serviceCelebration(uint32_t now) {
+  if (!celebrationActive) return;
+
+  // A celebration can start inside server.handleClient(), after loop() took
+  // its timestamp. Refreshing here prevents unsigned underflow from making a
+  // brand-new effect look expired.
+  if ((int32_t)(now - celebrationStartedMs) < 0) now = millis();
+
+  const uint32_t ageMs = elapsedMs(now, celebrationStartedMs);
+  if (ageMs >= celebrationDurationMs) {
+    restoreUiAfterCelebration();
+    return;
+  }
+
+  const uint16_t nextFrame = (uint16_t)(ageMs / CELEBRATION_FRAME_MS);
+  if (nextFrame == celebrationFrame) return;
+
+  const uint16_t previousFrame = celebrationFrame;
+  celebrationFrame = nextFrame;
+  celebrationLastFrameMs = now;
+
+  if (celebrationStyle == CELEBRATE_CONFETTI) {
+    drawCelebrationConfetti(previousFrame, true);
+    drawCelebrationConfetti(celebrationFrame, false);
+  } else if (celebrationStyle == CELEBRATE_PULSE) {
+    drawCelebrationPulseRings(previousFrame, true);
+    drawCelebrationPulseRings(celebrationFrame, false);
+  } else {
+    drawSuccessSparkles(previousFrame, true);
+    drawSuccessMark(ageMs);
+    drawSuccessSparkles(celebrationFrame, false);
+  }
+}
+
+// ============================================================================
 // 6. UI STATE / MESSAGE PAGE
 // ============================================================================
 
@@ -2971,12 +3370,16 @@ String lastDrawLine1 = "";
 String lastDrawLine2 = "";
 
 String textPageLines[TEXT_PAGE_HISTORY_LINES];
+uint16_t textPageLineColors[TEXT_PAGE_HISTORY_LINES];
 uint8_t textPageLineCount = 0;
 bool textPageActive = false;
 uint32_t textPageUntilMs = 0;
 uint32_t lastTextPageDrawToken = 0;
 uint32_t lastNoPetHeaderToken = 0;
 uint32_t lastNoPetBodyToken = 0;
+String lastNoPetAckText = "";
+uint16_t lastNoPetAckColor = COLOR_FG;
+String lastNoPetIpLine = "";
 bool textPageHasPlaceholder = false;
 
 enum AckState : uint8_t {
@@ -2986,12 +3389,39 @@ enum AckState : uint8_t {
 };
 
 AckState ackState = ACK_UNKNOWN;
+bool longPressVisualActive = false;
 
 void drawLineArea(int y, const String& text, uint16_t fg) {
   tft.fillRect(0, y, SCREEN_W, LINE_H, COLOR_BG);
   tft.setCursor(0, y);
-  tft.setTextColor(fg, COLOR_BG);
+  tft.setTextColor(fg);
   tft.print(truncateCols(text));
+}
+
+void drawLineAreaWithRight(int y, const String& leftText, uint16_t leftFg, const String& rightText, uint16_t rightFg) {
+  tft.fillRect(0, y, SCREEN_W, LINE_H, COLOR_BG);
+
+  String left = leftText;
+  if (rightText.length()) {
+    const int rightW = (int)rightText.length() * CHAR_W;
+    int leftMaxCols = (SCREEN_W - rightW - 2) / CHAR_W;
+    if (leftMaxCols < 0) leftMaxCols = 0;
+    if ((int)left.length() > leftMaxCols) left = left.substring(0, leftMaxCols);
+  } else {
+    left = truncateCols(left);
+  }
+
+  tft.setCursor(0, y);
+  tft.setTextColor(leftFg, COLOR_BG);
+  tft.print(left);
+
+  if (rightText.length()) {
+    int rx = SCREEN_W - ((int)rightText.length() * CHAR_W);
+    if (rx < 0) rx = 0;
+    tft.setCursor(rx, y);
+    tft.setTextColor(rightFg, COLOR_BG);
+    tft.print(rightText);
+  }
 }
 
 String computeLine1() {
@@ -3011,7 +3441,7 @@ void updateHeaderLine1(bool force = false) {
   if (!force && line1 == lastDrawLine1) return;
   lastDrawLine1 = line1;
   uint16_t line1Color = transientStatus.length() ? transientStatusColor : COLOR_FG;
-  drawLineArea(0, line1, line1Color);
+  drawLineAreaWithRight(0, line1, line1Color, longPressVisualActive ? "LONG" : "", COLOR_BAD);
 }
 
 void updateHeaderLine2(bool force = false) {
@@ -3025,7 +3455,7 @@ void setToast(const String& msg, uint32_t ttlMs, uint16_t color = COLOR_FG) {
   transientStatus = truncateCols(msg);
   transientStatusColor = color;
   transientUntilMs = millis() + ttlMs;
-  if (!textPageActive && petModeEnabled()) updateHeaderLine1(true);
+  if (!celebrationActive && !textPageActive && petModeEnabled()) updateHeaderLine1(true);
 }
 
 void updateTransientStatus(uint32_t now) {
@@ -3046,6 +3476,9 @@ void clearUiMessages() {
   lastTextPageDrawToken = 0;
   lastNoPetHeaderToken = 0;
   lastNoPetBodyToken = 0;
+  lastNoPetAckText = "";
+  lastNoPetAckColor = COLOR_FG;
+  lastNoPetIpLine = "";
   textPageHasPlaceholder = false;
 
   if (petModeEnabled()) {
@@ -3054,6 +3487,10 @@ void clearUiMessages() {
 }
 
 void appendTextPageMessage(const String& msgRaw) {
+  appendTextPageMessage(msgRaw, COLOR_FG);
+}
+
+void appendTextPageMessage(const String& msgRaw, uint16_t color) {
   String clean = msgRaw;
   clean.replace("\r", " ");
   clean.replace("\n", " ");
@@ -3084,12 +3521,16 @@ void appendTextPageMessage(const String& msgRaw) {
     }
 
     if (textPageLineCount < TEXT_PAGE_HISTORY_LINES) {
-      textPageLines[textPageLineCount++] = line;
+      textPageLines[textPageLineCount] = line;
+      textPageLineColors[textPageLineCount] = color;
+      textPageLineCount++;
     } else {
       for (uint8_t i = 1; i < TEXT_PAGE_HISTORY_LINES; ++i) {
         textPageLines[i - 1] = textPageLines[i];
+        textPageLineColors[i - 1] = textPageLineColors[i];
       }
       textPageLines[TEXT_PAGE_HISTORY_LINES - 1] = line;
+      textPageLineColors[TEXT_PAGE_HISTORY_LINES - 1] = color;
     }
 
     start += take;
@@ -3108,6 +3549,23 @@ void addNoPetWelcomeLines() {
     appendTextPageMessage("Lumia + key debug");
     appendTextPageMessage("Waiting for events...");
   }
+}
+
+
+uint16_t parseStatusColor(const String& raw) {
+  String color = raw;
+  color.trim();
+  color.toLowerCase();
+
+  if (color == "red") return COLOR_BAD;
+  if (color == "green") return COLOR_GOOD;
+  if (color == "yellow") return COLOR_WARN;
+
+  return COLOR_ACCENT;
+}
+
+String formatStatusDisplayText(const String& text) {
+  return String("<") + text + ">";
 }
 
 
@@ -3146,7 +3604,7 @@ void buildWrappedLines(const String& msgRaw, String* outLines, uint8_t& outCount
 
 void renderNoPetHeader(bool force) {
   uint16_t ackColor = COLOR_WARN;
-  const char* ackText = "ACK: --";
+  String ackText = "ACK: --";
   if (ackState == ACK_OK) {
     ackText = "ACK: OK";
     ackColor = COLOR_GOOD;
@@ -3167,9 +3625,23 @@ void renderNoPetHeader(bool force) {
   if (!force && token == lastNoPetHeaderToken) return;
   lastNoPetHeaderToken = token;
 
-  drawLineArea(0, ackText, ackColor);
-  drawLineArea(LINE_H, ipLine, COLOR_FG);
-  tft.drawFastHLine(0, 2 * LINE_H, SCREEN_W, COLOR_DIM);
+  lastNoPetAckText = ackText;
+  lastNoPetAckColor = ackColor;
+  lastNoPetIpLine = ipLine;
+
+  tft.fillRect(0, 0, SCREEN_W, 2 * LINE_H, COLOR_PANEL2);
+  tft.setCursor(5, 0);
+  tft.setTextColor(ackColor, COLOR_PANEL2);
+  tft.print(ackText);
+  if (longPressVisualActive) {
+    tft.setCursor(130, 0);
+    tft.setTextColor(COLOR_BAD, COLOR_PANEL2);
+    tft.print(F("LONG"));
+  }
+  tft.setCursor(5, LINE_H);
+  tft.setTextColor(COLOR_FG, COLOR_PANEL2);
+  tft.print(ipLine);
+  tft.drawFastHLine(0, 2 * LINE_H, SCREEN_W, COLOR_ACCENT);
 }
 
 void renderNoPetBody(bool force) {
@@ -3181,6 +3653,7 @@ void renderNoPetBody(bool force) {
 
   for (uint8_t i = 0; i < textPageLineCount && i < TEXT_PAGE_HISTORY_LINES; ++i) {
     token ^= ((uint32_t)textPageLines[i].length() << ((i % 4) * 6));
+    token ^= ((uint32_t)textPageLineColors[i] << ((i % 2) * 8));
     if (textPageLines[i].length()) token ^= (uint8_t)textPageLines[i][0] << ((i % 4) * 4);
   }
 
@@ -3191,17 +3664,29 @@ void renderNoPetBody(bool force) {
   const int bodyH = SCREEN_H - bodyY;
   tft.fillRect(0, bodyY, SCREEN_W, bodyH, COLOR_BG);
 
-  const uint8_t visibleLines = (SCREEN_H / LINE_H) - 3;
+  tft.setCursor(6, 20);
+  tft.setTextColor(COLOR_ACCENT, COLOR_BG);
+  tft.print(F("LUMIA FEED"));
+  tft.drawFastHLine(6, 29, SCREEN_W - 12, COLOR_PANEL2);
+
+  const uint8_t visibleLines = 10;
   tft.setTextWrap(false);
   tft.setTextSize(TEXT_SIZE);
-  tft.setTextColor(COLOR_FG, COLOR_BG);
   for (uint8_t i = 0; i < textPageLineCount && i < visibleLines; ++i) {
-    tft.setCursor(0, (i + 3) * LINE_H);
+    int y = 33 + i * 9;
+    tft.fillRoundRect(5, y - 2, 150, 9, 3, COLOR_PANEL);
+    tft.fillRect(5, y - 1, 2, 7, textPageLineColors[i]);
+    tft.setCursor(10, y);
+    tft.setTextColor(textPageLineColors[i], COLOR_PANEL);
     tft.print(textPageLines[i]);
   }
 }
 
 void insertTopWrappedMessageNoPet(const String& msgRaw) {
+  insertTopWrappedMessageNoPet(msgRaw, COLOR_FG);
+}
+
+void insertTopWrappedMessageNoPet(const String& msgRaw, uint16_t color) {
   String wrapped[TEXT_PAGE_HISTORY_LINES];
   uint8_t wrappedCount = 0;
   buildWrappedLines(msgRaw, wrapped, wrappedCount);
@@ -3222,9 +3707,11 @@ void insertTopWrappedMessageNoPet(const String& msgRaw) {
 
   for (int i = (int)keepCount - 1; i >= 0; --i) {
     textPageLines[i + wrappedCount] = textPageLines[i];
+    textPageLineColors[i + wrappedCount] = textPageLineColors[i];
   }
   for (uint8_t i = 0; i < wrappedCount && i < TEXT_PAGE_HISTORY_LINES; ++i) {
     textPageLines[i] = wrapped[i];
+    textPageLineColors[i] = color;
   }
 
   textPageLineCount = wrappedCount + keepCount;
@@ -3250,7 +3737,7 @@ void refreshNoPetPage(bool resetHistory) {
 void renderTextPage(bool force) {
   if (!textPageActive && !force) return;
 
-  if (uiMode == UI_MODE_PET) {
+  if (petModeEnabled()) {
     uint32_t token =
         (uint32_t)textPageLineCount ^
         (textPageUntilMs << 1) ^
@@ -3258,6 +3745,12 @@ void renderTextPage(bool force) {
         ((uint32_t)uiMode << 24) ^
         ((uint32_t)ackState << 16) ^
         (uint32_t)WiFi.localIP();
+
+    for (uint8_t i = 0; i < textPageLineCount && i < TEXT_PAGE_HISTORY_LINES; ++i) {
+      token ^= ((uint32_t)textPageLines[i].length() << ((i % 4) * 6));
+      token ^= ((uint32_t)textPageLineColors[i] << ((i % 2) * 8));
+      if (textPageLines[i].length()) token ^= (uint8_t)textPageLines[i][0] << ((i % 4) * 4);
+    }
 
     if (!force && token == lastTextPageDrawToken) return;
     lastTextPageDrawToken = token;
@@ -3270,9 +3763,9 @@ void renderTextPage(bool force) {
     tft.print("MESSAGES");
     tft.drawFastHLine(0, LINE_H, SCREEN_W, COLOR_DIM);
 
-    tft.setTextColor(COLOR_FG, COLOR_BG);
     for (uint8_t i = 0; i < textPageLineCount && i < TEXT_PAGE_HISTORY_LINES; ++i) {
       tft.setCursor(0, (i + 1) * LINE_H);
+      tft.setTextColor(textPageLineColors[i], COLOR_BG);
       tft.print(textPageLines[i]);
     }
     return;
@@ -3284,7 +3777,26 @@ void renderTextPage(bool force) {
 
 void showTextPage(uint32_t ttlMs) {
   textPageActive = true;
-  textPageUntilMs = petModeEnabled() ? (millis() + ttlMs) : 0;
+  if (petModeEnabled()) {
+    uint32_t visibleFromMs = millis();
+    if (celebrationActive) {
+      uint32_t ageMs = elapsedMs(visibleFromMs, celebrationStartedMs);
+      if (ageMs < celebrationDurationMs) {
+        visibleFromMs += celebrationDurationMs - ageMs;
+      }
+    }
+    textPageUntilMs = visibleFromMs + ttlMs;
+  } else {
+    textPageUntilMs = 0;
+  }
+
+  if (celebrationActive) return;
+
+  if (noPetModeActive()) {
+    renderNoPetBody(true);
+    return;
+  }
+
   renderTextPage(true);
 }
 
@@ -3423,24 +3935,27 @@ bool postEventToPluginEx(uint8_t eventNumber, uint8_t keyIndex, const char* pres
 
   WiFiClient client;
   HTTPClient http;
-  String url = String("http://") + PLUGIN_HOST + ":" + String(PLUGIN_PORT) + "/event";
-
-  String body;
-  body.reserve(512);
-  body = "{";
-  body += "\"event\":" + String(eventNumber);
-  body += ",\"seq\":" + String(seq);
-  body += ",\"deviceId\":\"" + deviceId + "\"";
-  body += ",\"key\":" + String(keyIndex);
-  body += ",\"press\":\"" + String(pressKind) + "\"";
-  body += ",\"heldMs\":" + String(heldMs);
-  body += ",\"uptimeMs\":" + String(millis());
-  if (WiFi.status() == WL_CONNECTED) body += ",\"rssi\":" + String(WiFi.RSSI());
-  if (extraJson && extraJson[0]) {
-    body += ",";
-    body += extraJson;
+  String url = F("http://");
+  url += pluginHost;
+  url += ':';
+  url += PLUGIN_PORT;
+  url += F("/event");
+ 
+  static char body[512];
+  int len = snprintf(body, sizeof(body),
+    "{\"event\":%u,\"seq\":%u,\"deviceId\":\"%s\",\"key\":%u,\"press\":\"%s\",\"heldMs\":%u,\"uptimeMs\":%lu",
+    eventNumber, seq, deviceId.c_str(), keyIndex, pressKind, heldMs, millis()
+  );
+ 
+  if (WiFi.status() == WL_CONNECTED) {
+    len += snprintf(body + len, sizeof(body) - len, ",\"rssi\":%d", WiFi.RSSI());
   }
-  body += "}";
+ 
+  if (extraJson && extraJson[0]) {
+    len += snprintf(body + len, sizeof(body) - len, ",%s", extraJson);
+  }
+ 
+  len += snprintf(body + len, sizeof(body) - len, "}");
 
   uint32_t backoff = 120;
   for (uint8_t attempt = 0; attempt < 2; ++attempt) {
@@ -3452,12 +3967,12 @@ bool postEventToPluginEx(uint8_t eventNumber, uint8_t keyIndex, const char* pres
       continue;
     }
 
-    http.addHeader("Content-Type", "application/json");
+    http.addHeader(F("Content-Type"), F("application/json"));
     if (PLUGIN_SECRET && PLUGIN_SECRET[0] != '\0') {
-      http.addHeader("X-Matrix-Secret", PLUGIN_SECRET);
+      http.addHeader(F("X-Matrix-Secret"), PLUGIN_SECRET);
     }
 
-    int code = http.POST((uint8_t*)body.c_str(), body.length());
+    int code = http.POST((uint8_t*)body, len);
     String resp = http.getString();
     http.end();
 
@@ -3556,20 +4071,30 @@ BootMode detectBootMode() {
   uint32_t start = millis();
 
   bool k0Down = false;
+  bool k1Down = false;
   bool k2Down = false;
   bool k35Down = false;
   uint32_t k0DownAt = 0;
+  uint32_t k1DownAt = 0;
   uint32_t k2DownAt = 0;
   uint32_t k35DownAt = 0;
+  uint32_t lastDrawMs = 0;
+  int8_t lastSelected = -2;
+
+  drawBootOptionsPage();
+  drawBootSelection(-1, 0, BOOT_HOLD_WINDOW_MS);
 
   while (elapsedMs(millis(), start) < BOOT_HOLD_WINDOW_MS) {
     uint8_t type, key;
-    if (readPicoPacket(type, key)) {
+    while (readPicoPacket(type, key)) {
       picoSeen = true;
 
       if (key == FACTORY_RESET_KEY) {
         if (type == 1) { if (!k0Down) { k0Down = true; k0DownAt = millis(); } }
         else k0Down = false;
+      } else if (key == CHAT_MODE_BOOT_KEY) {
+        if (type == 1) { if (!k1Down) { k1Down = true; k1DownAt = millis(); } }
+        else k1Down = false;
       } else if (key == NOPET_DEBUG_BOOT_KEY) {
         if (type == 1) { if (!k2Down) { k2Down = true; k2DownAt = millis(); } }
         else k2Down = false;
@@ -3580,13 +4105,112 @@ BootMode detectBootMode() {
     }
 
     uint32_t now = millis();
-    if (k0Down && elapsedMs(now, k0DownAt) >= BOOT_HOLD_MS) return BOOT_MODE_WIFI_RESET;
-    if (k2Down && elapsedMs(now, k2DownAt) >= BOOT_HOLD_MS) return BOOT_MODE_NOPET_DEBUG;
-    if (k35Down && elapsedMs(now, k35DownAt) >= BOOT_HOLD_MS) return BOOT_MODE_PET;
+    int8_t selected = -1;
+    uint32_t heldMs = 0;
+    BootMode selectedMode = BOOT_MODE_NORMAL;
+    if (k0Down) {
+      selected = FACTORY_RESET_KEY;
+      heldMs = elapsedMs(now, k0DownAt);
+      selectedMode = BOOT_MODE_WIFI_RESET;
+    } else if (k1Down) {
+      selected = CHAT_MODE_BOOT_KEY;
+      heldMs = elapsedMs(now, k1DownAt);
+      selectedMode = BOOT_MODE_CHAT;
+    } else if (k2Down) {
+      selected = NOPET_DEBUG_BOOT_KEY;
+      heldMs = elapsedMs(now, k2DownAt);
+      selectedMode = BOOT_MODE_NOPET_DEBUG;
+    } else if (k35Down) {
+      selected = PET_MODE_BOOT_KEY;
+      heldMs = elapsedMs(now, k35DownAt);
+      selectedMode = BOOT_MODE_PET;
+    }
+
+    const bool selectionReady = selected >= 0 && heldMs >= BOOT_HOLD_MS;
+    if (!lastDrawMs || elapsedMs(now, lastDrawMs) >= 40 || selectionReady) {
+      lastDrawMs = now;
+      if (selected != lastSelected) {
+        drawBootOptionRows(selected);
+        lastSelected = selected;
+      }
+      uint32_t percentRaw = (heldMs * 100) / BOOT_HOLD_MS;
+      if (percentRaw > 100) percentRaw = 100;
+      uint8_t percent = (uint8_t)percentRaw;
+      uint16_t remaining = (uint16_t)(BOOT_HOLD_WINDOW_MS - elapsedMs(now, start));
+      drawBootSelection(selected, percent, remaining);
+    }
+
+    if (selectionReady) {
+      delay(120);
+      yield();
+      return selectedMode;
+    }
     yield();
   }
 
   return BOOT_MODE_NORMAL;
+}
+
+static String sanitizePluginHost(const String& raw) {
+  String host = raw;
+  host.trim();
+  if (host.startsWith("http://")) host.remove(0, 7);
+  else if (host.startsWith("https://")) host.remove(0, 8);
+  int slash = host.indexOf('/');
+  if (slash >= 0) host = host.substring(0, slash);
+  host.trim();
+  return host;
+}
+
+bool isValidPluginHost(const String& hostIn) {
+  String host = sanitizePluginHost(hostIn);
+  if (!host.length() || host.length() >= PLUGIN_HOST_MAX_LEN) return false;
+
+  bool hasDot = false;
+  for (uint16_t i = 0; i < host.length(); ++i) {
+    char c = host[i];
+    bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '.';
+    if (!ok) return false;
+    if (c == '.') hasDot = true;
+  }
+
+  if (host[0] == '.' || host[0] == '-' || host[host.length() - 1] == '.' || host[host.length() - 1] == '-') return false;
+  return hasDot || host.equalsIgnoreCase("localhost");
+}
+
+bool loadPluginConfig() {
+  PluginConfigBlob blob;
+  EEPROM.get(CONFIG_EEPROM_OFFSET, blob);
+  if (blob.magic != CONFIG_MAGIC) return false;
+  if (blob.length != sizeof(blob.host)) return false;
+  uint16_t crc = crc16_ccitt((const uint8_t*)&blob.host[0], sizeof(blob.host));
+  if (crc != blob.crc) return false;
+  blob.host[sizeof(blob.host) - 1] = '\0';
+  String loaded = blob.host;
+  loaded.trim();
+  if (!isValidPluginHost(loaded)) return false;
+  pluginHost = sanitizePluginHost(loaded);
+  return true;
+}
+
+void savePluginConfig() {
+  PluginConfigBlob blob = {};
+  blob.magic = CONFIG_MAGIC;
+  blob.length = sizeof(blob.host);
+  String clean = sanitizePluginHost(pluginHost);
+  clean.toCharArray(blob.host, sizeof(blob.host));
+  blob.crc = crc16_ccitt((const uint8_t*)&blob.host[0], sizeof(blob.host));
+  EEPROM.put(CONFIG_EEPROM_OFFSET, blob);
+  EEPROM.commit();
+}
+
+void resetPluginConfig() {
+  pluginHost = DEFAULT_PLUGIN_HOST;
+  savePluginConfig();
 }
 
 uint16_t crc16_ccitt(const uint8_t* data, size_t len) {
@@ -3682,6 +4306,28 @@ void commitPetTransitions() {
   snapshotPet(nowSnap);
   detectAndQueuePetTransitions(lastBroadcastPet, nowSnap);
   lastBroadcastPet = nowSnap;
+
+  if (uiMode == UI_MODE_LCD_ONLY) {
+    transmitPetStatusSerial();
+  }
+}
+
+void transmitPetStatusSerial() {
+  PetSnapshot snap;
+  snapshotPet(snap);
+
+  uint8_t len = sizeof(PetSnapshot);
+  uint8_t chk = 0xA6 ^ len;
+
+  Serial.write(0xA6);
+  Serial.write(len);
+
+  uint8_t* ptr = (uint8_t*)&snap;
+  for (uint8_t i = 0; i < len; ++i) {
+    Serial.write(ptr[i]);
+    chk ^= ptr[i];
+  }
+  Serial.write(chk);
 }
 
 void resetPet(bool firstBoot) {
@@ -3925,18 +4571,138 @@ void performPetAction(PetAction action) {
 // 10. PET RENDERING
 // ============================================================================
 
-static const uint8_t PROGMEM SPR_EGG0[72]   = {0,0,0,0,0,0,0,0,0,15,255,0,63,255,192,127,255,224,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,127,255,224,63,255,192,15,255,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static const uint8_t PROGMEM SPR_EGG1[72]   = {0,0,0,0,0,0,0,0,0,7,254,0,31,255,128,63,255,192,127,255,224,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,127,255,224,63,255,192,31,255,128,7,254,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static const uint8_t PROGMEM SPR_BABY0[72]  = {0,0,0,0,0,0,3,48,192,7,176,224,63,255,192,127,255,224,127,255,224,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,127,255,224,127,255,224,63,255,192,31,255,128,3,48,192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static const uint8_t PROGMEM SPR_BABY1[72]  = {0,0,0,0,0,0,1,128,96,3,192,48,127,255,224,127,255,224,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,255,255,240,127,255,224,127,255,224,63,255,192,31,255,128,3,48,192,1,128,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static const uint8_t PROGMEM SPR_CHILD0[72] = {0,0,0,1,129,128,3,195,192,127,255,224,255,255,240,255,255,240,255,255,248,255,255,248,255,255,248,255,255,248,255,255,248,255,255,248,255,255,248,255,255,240,255,255,240,127,255,224,63,195,192,48,0,192,24,0,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static const uint8_t PROGMEM SPR_CHILD1[72] = {0,0,0,3,0,192,7,129,224,255,255,240,255,255,248,255,255,248,255,255,248,255,255,248,255,255,248,255,255,248,255,255,248,255,255,248,255,255,240,255,255,240,127,255,224,63,255,192,56,0,224,24,0,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static const uint8_t PROGMEM SPR_TEEN0[72]  = {0,0,0,3,128,112,7,193,248,255,255,240,255,255,248,255,255,248,255,255,252,255,255,252,255,255,252,255,255,252,255,255,252,255,255,252,255,255,252,255,255,248,255,255,248,127,255,240,120,96,240,48,0,112,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static const uint8_t PROGMEM SPR_TEEN1[72]  = {0,0,0,14,1,192,31,3,224,255,255,240,255,255,248,255,255,252,255,255,252,255,255,252,255,255,252,255,255,252,255,255,252,255,255,252,127,255,248,127,255,248,63,255,240,31,255,224,120,15,240,56,0,112,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static const uint8_t PROGMEM SPR_ADULT0[72] = {0,0,0,15,0,240,31,129,248,127,255,248,255,255,252,255,255,252,255,255,254,255,255,254,255,255,254,255,255,254,255,255,254,255,255,254,255,255,254,255,255,252,255,255,252,127,255,248,127,63,248,120,15,240,56,7,112,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static const uint8_t PROGMEM SPR_ADULT1[72] = {0,0,0,30,0,120,63,0,252,255,255,252,255,255,254,255,255,254,255,255,254,255,255,254,255,255,254,255,255,254,255,255,254,255,255,254,255,255,252,255,255,252,127,255,248,127,255,248,63,224,248,60,15,240,24,3,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static const uint8_t PROGMEM SPR_ELDER0[72] = {0,0,0,14,0,112,31,0,248,127,255,248,255,255,252,255,255,252,255,255,254,255,255,254,255,255,254,255,255,254,255,255,254,255,255,254,255,255,252,255,255,252,127,255,248,127,255,248,31,224,248,60,15,240,48,3,48,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static const uint8_t PROGMEM SPR_ELDER1[72] = {0,0,0,28,0,56,62,0,124,255,255,252,255,255,254,255,255,254,255,255,254,255,255,254,255,255,254,255,255,254,255,255,254,255,255,252,255,255,252,127,255,248,127,255,248,31,255,240,62,15,248,28,7,112,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+static const uint8_t PROGMEM SPR_EGG0[128] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 3, 192, 0, 0, 15, 240, 0, 0, 31, 248, 0,
+  0, 63, 252, 0, 0, 63, 252, 0, 0, 127, 254, 0, 0, 127, 254, 0,
+  0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0,
+  0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0,
+  0, 127, 254, 0, 0, 127, 254, 0, 0, 63, 252, 0, 0, 63, 252, 0,
+  0, 63, 252, 0, 0, 63, 252, 0, 0, 63, 252, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+
+static const uint8_t PROGMEM SPR_EGG1[128] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 192, 0, 0, 15, 240, 0,
+  0, 31, 248, 0, 0, 63, 252, 0, 0, 63, 252, 0, 0, 127, 254, 0,
+  0, 127, 254, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0,
+  0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0,
+  0, 255, 255, 0, 0, 127, 254, 0, 0, 127, 254, 0, 0, 63, 252, 0,
+  0, 63, 252, 0, 0, 63, 252, 0, 0, 63, 252, 0, 0, 63, 252, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+
+static const uint8_t PROGMEM SPR_BABY0[128] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 192, 0,
+  0, 31, 240, 0, 0, 63, 248, 0, 0, 127, 252, 0, 0, 127, 252, 0,
+  0, 255, 254, 0, 0, 255, 254, 0, 0, 255, 254, 0, 0, 255, 254, 0,
+  0, 127, 252, 0, 0, 127, 252, 0, 0, 127, 252, 0, 0, 63, 248, 0,
+  0, 31, 240, 0, 0, 15, 224, 0, 0, 15, 224, 0, 14, 0, 0, 112,
+  14, 0, 0, 112, 6, 0, 0, 96, 2, 0, 0, 64, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 15, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+
+static const uint8_t PROGMEM SPR_BABY1[128] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 7, 192, 0, 0, 31, 240, 0, 0, 63, 248, 0, 0, 127, 252, 0,
+  0, 127, 252, 0, 0, 255, 254, 0, 0, 255, 254, 0, 0, 255, 254, 0,
+  0, 255, 254, 0, 0, 127, 252, 0, 0, 127, 252, 0, 0, 127, 252, 0,
+  0, 63, 248, 0, 0, 31, 240, 0, 0, 15, 224, 0, 14, 15, 224, 112,
+  14, 0, 0, 112, 6, 0, 0, 96, 2, 0, 0, 64, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 15, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+
+static const uint8_t PROGMEM SPR_CHILD0[128] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 7, 224, 0, 0, 15, 240, 0, 0, 63, 252, 0, 0, 63, 252, 0,
+  0, 127, 254, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0,
+  0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 127, 254, 0,
+  0, 63, 252, 0, 0, 63, 252, 0, 0, 63, 252, 0, 0, 63, 252, 0,
+  0, 31, 248, 0, 0, 31, 248, 0, 0, 31, 248, 0, 0, 15, 240, 0,
+  0, 15, 240, 0, 0, 31, 248, 0, 0, 31, 248, 0, 0, 31, 248, 0,
+  0, 31, 248, 0, 0, 124, 62, 0, 0, 124, 62, 0, 0, 0, 0, 0
+};
+
+static const uint8_t PROGMEM SPR_CHILD1[128] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 7, 224, 0, 0, 15, 240, 0, 0, 63, 252, 0,
+  0, 63, 252, 0, 0, 127, 254, 0, 0, 255, 255, 0, 0, 255, 255, 0,
+  0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0,
+  0, 127, 254, 0, 0, 63, 252, 0, 0, 63, 252, 0, 0, 63, 252, 0,
+  0, 63, 252, 0, 0, 31, 248, 0, 0, 31, 248, 0, 0, 31, 248, 0,
+  0, 15, 240, 0, 0, 15, 240, 0, 0, 31, 248, 0, 0, 31, 248, 0,
+  0, 31, 248, 0, 0, 31, 248, 0, 0, 124, 62, 0, 0, 124, 62, 0
+};
+
+static const uint8_t PROGMEM SPR_TEEN0[128] = {
+  0, 1, 130, 0, 0, 129, 135, 0, 1, 192, 134, 0, 0, 192, 204, 128,
+  4, 96, 221, 192, 14, 112, 15, 128, 7, 167, 238, 0, 1, 223, 252, 0,
+  0, 191, 252, 0, 0, 127, 254, 0, 0, 127, 254, 0, 0, 255, 255, 0,
+  0, 255, 255, 0, 0, 255, 255, 0, 124, 255, 255, 62, 124, 255, 255, 62,
+  0, 127, 254, 0, 0, 127, 254, 0, 0, 63, 252, 0, 0, 63, 252, 0,
+  0, 63, 252, 0, 0, 31, 248, 0, 0, 31, 248, 0, 0, 31, 248, 0,
+  0, 31, 248, 0, 0, 31, 248, 0, 0, 31, 248, 0, 0, 31, 248, 0,
+  0, 31, 248, 0, 0, 31, 248, 0, 0, 124, 62, 0, 0, 124, 62, 0
+};
+
+static const uint8_t PROGMEM SPR_TEEN1[128] = {
+  0, 0, 0, 0, 0, 1, 128, 0, 0, 1, 129, 0, 1, 0, 131, 128,
+  3, 128, 199, 0, 1, 192, 206, 64, 16, 224, 5, 192, 28, 71, 231, 0,
+  7, 31, 252, 0, 1, 63, 252, 0, 0, 127, 254, 0, 0, 127, 254, 0,
+  0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0,
+  248, 255, 255, 31, 248, 127, 254, 31, 0, 127, 254, 0, 0, 63, 252, 0,
+  0, 63, 252, 0, 0, 63, 252, 0, 0, 31, 248, 0, 0, 31, 248, 0,
+  0, 31, 248, 0, 0, 31, 248, 0, 0, 31, 248, 0, 0, 31, 248, 0,
+  0, 31, 248, 0, 0, 31, 248, 0, 0, 31, 248, 0, 0, 124, 62, 0
+};
+
+static const uint8_t PROGMEM SPR_ADULT0[128] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 224, 0, 0, 31, 248, 0,
+  0, 63, 252, 0, 0, 127, 254, 0, 0, 255, 255, 0, 0, 255, 255, 0,
+  1, 255, 255, 128, 1, 255, 255, 128, 1, 255, 255, 128, 1, 255, 255, 128,
+  1, 255, 255, 128, 0, 255, 255, 0, 0, 255, 255, 0, 0, 127, 254, 0,
+  0, 127, 254, 0, 0, 127, 254, 0, 0, 127, 254, 0, 0, 127, 254, 0,
+  0, 127, 254, 0, 0, 127, 254, 0, 0, 127, 254, 0, 0, 63, 252, 0,
+  0, 63, 252, 0, 0, 63, 252, 0, 0, 63, 252, 0, 0, 63, 252, 0,
+  0, 63, 252, 0, 0, 63, 252, 0, 0, 63, 252, 0, 0, 124, 62, 0
+};
+
+static const uint8_t PROGMEM SPR_ADULT1[128] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 224, 0,
+  0, 31, 248, 0, 0, 63, 252, 0, 0, 127, 254, 0, 0, 255, 255, 0,
+  0, 255, 255, 0, 1, 255, 255, 128, 1, 255, 255, 128, 1, 255, 255, 128,
+  1, 255, 255, 128, 1, 255, 255, 128, 0, 255, 255, 0, 0, 255, 255, 0,
+  0, 127, 254, 0, 0, 127, 254, 0, 0, 127, 254, 0, 0, 127, 254, 0,
+  0, 127, 254, 0, 0, 127, 254, 0, 0, 127, 254, 0, 0, 127, 254, 0,
+  0, 63, 252, 0, 0, 63, 252, 0, 0, 63, 252, 0, 0, 63, 252, 0,
+  0, 63, 252, 0, 0, 63, 252, 0, 0, 63, 252, 0, 0, 63, 252, 0
+};
+
+static const uint8_t PROGMEM SPR_ELDER0[128] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 224, 0, 0, 31, 248, 0,
+  0, 127, 254, 0, 0, 255, 255, 0, 29, 255, 255, 184, 63, 255, 255, 252,
+  127, 255, 255, 254, 127, 255, 255, 254, 127, 255, 255, 254, 63, 255, 255, 252,
+  31, 255, 255, 252, 3, 255, 255, 194, 1, 255, 255, 153, 1, 255, 255, 153,
+  0, 255, 255, 25, 0, 127, 254, 26, 0, 127, 254, 28, 0, 127, 254, 24,
+  0, 127, 254, 24, 0, 127, 254, 24, 0, 127, 254, 24, 0, 127, 254, 24,
+  0, 63, 252, 24, 0, 63, 252, 24, 0, 124, 62, 24, 0, 124, 62, 24
+};
+
+static const uint8_t PROGMEM SPR_ELDER1[128] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 224, 0,
+  0, 31, 248, 0, 0, 127, 254, 0, 0, 255, 255, 0, 29, 255, 255, 184,
+  63, 255, 255, 252, 127, 255, 255, 254, 127, 255, 255, 254, 127, 255, 255, 254,
+  63, 255, 255, 252, 31, 255, 255, 252, 3, 255, 255, 194, 1, 255, 255, 153,
+  1, 255, 255, 153, 0, 255, 255, 25, 0, 127, 254, 26, 0, 127, 254, 28,
+  0, 127, 254, 24, 0, 127, 254, 24, 0, 127, 254, 24, 0, 127, 254, 24,
+  0, 127, 254, 24, 0, 63, 252, 24, 0, 63, 252, 24, 0, 124, 62, 24
+};
 
 struct FastStageSpriteSet {
   const uint8_t* frames[2];
@@ -3945,21 +4711,239 @@ struct FastStageSpriteSet {
 };
 
 static const FastStageSpriteSet FAST_STAGE_SPRITES[6] = {
-  { { SPR_EGG0,   SPR_EGG1   }, 24, 24 },
-  { { SPR_BABY0,  SPR_BABY1  }, 24, 24 },
-  { { SPR_CHILD0, SPR_CHILD1 }, 24, 24 },
-  { { SPR_TEEN0,  SPR_TEEN1  }, 24, 24 },
-  { { SPR_ADULT0, SPR_ADULT1 }, 24, 24 },
-  { { SPR_ELDER0, SPR_ELDER1 }, 24, 24 }
+  { { SPR_EGG0,   SPR_EGG1   }, 32, 32 },
+  { { SPR_BABY0,  SPR_BABY1  }, 32, 32 },
+  { { SPR_CHILD0, SPR_CHILD1 }, 32, 32 },
+  { { SPR_TEEN0,  SPR_TEEN1  }, 32, 32 },
+  { { SPR_ADULT0, SPR_ADULT1 }, 32, 32 },
+  { { SPR_ELDER0, SPR_ELDER1 }, 32, 32 }
+};
+
+struct SpriteFaceLayout {
+  int8_t eyeLX;
+  int8_t eyeRX;
+  int8_t eyeY;
+  int8_t mouthX;
+  int8_t mouthY;
+  uint8_t eyeSize;
+};
+
+static const SpriteFaceLayout FACE_LAYOUTS[6] = {
+  { 12, 18, 15, 13, 20, 3 }, // egg
+  { 12, 18, 14, 13, 18, 3 }, // baby
+  { 12, 19, 13, 13, 18, 3 }, // child
+  { 12, 19, 14, 13, 20, 3 }, // teen
+  { 12, 19, 12, 13, 18, 3 }, // adult
+  { 12, 18, 16, 13, 21, 2 }  // elder
 };
 
 inline uint16_t spriteColorForStage(uint8_t stage) {
-  if (stage == 0) return COLOR_FG;
-  if (stage == 1) return rgb565(255, 220, 120);
-  if (stage == 2) return COLOR_ACCENT;
-  if (stage == 3) return rgb565(255, 160, 220);
-  if (stage == 4) return rgb565(180, 255, 180);
-  return rgb565(190, 220, 255);
+  if (stage == 0) return rgb565(255, 215, 232);
+  if (stage == 1) return rgb565(255, 110, 170);
+  if (stage == 2) return rgb565(255, 84, 140);
+  if (stage == 3) return rgb565(255, 64, 118);
+  if (stage == 4) return rgb565(255, 64, 118);
+  return rgb565(242, 132, 170);
+}
+
+static inline uint16_t spriteHighlightColor() {
+  return rgb565(255, 244, 248);
+}
+
+static inline uint16_t spriteHotAccent() {
+  return rgb565(255, 84, 140);
+}
+
+static inline uint16_t spriteShellColor() {
+  return rgb565(178, 178, 188);
+}
+
+static inline uint16_t spriteBaseColor() {
+  return rgb565(46, 46, 62);
+}
+
+static inline uint16_t spriteCaneColor() {
+  return rgb565(230, 150, 48);
+}
+
+void drawBulbHighlight(Adafruit_GFX &gfx, int spriteX, int spriteY, uint8_t stageIndex) {
+  const uint16_t hi = spriteHighlightColor();
+
+  if (stageIndex == 0) {
+    gfx.fillRect(spriteX + 11, spriteY + 10, 2, 2, hi);
+    gfx.fillRect(spriteX + 15, spriteY + 13, 2, 2, hi);
+    gfx.drawFastHLine(spriteX + 13, spriteY + 18, 3, hi);
+    return;
+  }
+
+  if (stageIndex == 1) {
+    gfx.drawLine(spriteX + 12, spriteY + 10, spriteX + 16, spriteY + 6, hi);
+    gfx.drawLine(spriteX + 10, spriteY + 12, spriteX + 15, spriteY + 7, hi);
+    gfx.fillRect(spriteX + 18, spriteY + 8, 2, 2, hi);
+    return;
+  }
+
+  gfx.drawLine(spriteX + 13, spriteY + 10, spriteX + 18, spriteY + 5, hi);
+  gfx.drawLine(spriteX + 11, spriteY + 12, spriteX + 17, spriteY + 6, hi);
+  gfx.fillRect(spriteX + 20, spriteY + 7, 2, 2, hi);
+
+  if (stageIndex >= 4) {
+    gfx.drawLine(spriteX + 10, spriteY + 15, spriteX + 13, spriteY + 12, hi);
+  }
+}
+
+void drawStageAccessories(Adafruit_GFX &gfx, uint8_t stageIndex, int spriteX, int spriteY, uint8_t frameIndex) {
+  const uint16_t hi = spriteHighlightColor();
+  const uint16_t base = spriteBaseColor();
+
+  switch (stageIndex) {
+    case 0:
+      drawBulbHighlight(gfx, spriteX, spriteY, stageIndex);
+      break;
+
+    case 1:
+      gfx.fillRoundRect(spriteX + 4, spriteY + 21, 24, 7, 3, spriteShellColor());
+      gfx.fillTriangle(spriteX + 8,  spriteY + 22, spriteX + 11, spriteY + 20, spriteX + 13, spriteY + 23, COLOR_BG);
+      gfx.fillTriangle(spriteX + 13, spriteY + 23, spriteX + 16, spriteY + 19, spriteX + 19, spriteY + 23, COLOR_BG);
+      gfx.fillTriangle(spriteX + 19, spriteY + 23, spriteX + 22, spriteY + 20, spriteX + 24, spriteY + 22, COLOR_BG);
+      gfx.drawFastHLine(spriteX + 6, spriteY + 21, 20, hi);
+      drawBulbHighlight(gfx, spriteX, spriteY, stageIndex);
+      break;
+
+    case 2:
+      drawBulbHighlight(gfx, spriteX, spriteY, stageIndex);
+      gfx.fillRect(spriteX + 11, spriteY + 26, 10, 4, base);
+      gfx.fillRect(spriteX + 9,  spriteY + 30, 4, 2, base);
+      gfx.fillRect(spriteX + 19, spriteY + 30, 4, 2, base);
+      break;
+
+    case 3:
+      gfx.drawLine(spriteX + 16, spriteY + 1 + frameIndex,  spriteX + 16, spriteY + 5 + frameIndex,  spriteHotAccent());
+      gfx.drawLine(spriteX + 6,  spriteY + 7 + frameIndex,  spriteX + 9,  spriteY + 9 + frameIndex,  spriteHotAccent());
+      gfx.drawLine(spriteX + 26, spriteY + 7 + frameIndex,  spriteX + 23, spriteY + 9 + frameIndex,  spriteHotAccent());
+      gfx.drawLine(spriteX + 3,  spriteY + 16 + frameIndex, spriteX + 7,  spriteY + 16 + frameIndex, spriteHotAccent());
+      gfx.drawLine(spriteX + 25, spriteY + 16 + frameIndex, spriteX + 29, spriteY + 16 + frameIndex, spriteHotAccent());
+      drawBulbHighlight(gfx, spriteX, spriteY, stageIndex);
+      gfx.fillRect(spriteX + 11, spriteY + 27, 10, 4, base);
+      gfx.fillRect(spriteX + 9,  spriteY + 30, 4, 2, base);
+      gfx.fillRect(spriteX + 19, spriteY + 30, 4, 2, base);
+      break;
+
+    case 4:
+      drawBulbHighlight(gfx, spriteX, spriteY, stageIndex);
+      gfx.fillRect(spriteX + 10, spriteY + 28, 12, 4, base);
+      gfx.fillRect(spriteX + 8,  spriteY + 31, 4, 1, base);
+      gfx.fillRect(spriteX + 20, spriteY + 31, 4, 1, base);
+      break;
+
+    default:
+      drawBulbHighlight(gfx, spriteX, spriteY, stageIndex);
+      gfx.fillCircle(spriteX + 5,  spriteY + 14 + frameIndex, 3, COLOR_FG);
+      gfx.fillCircle(spriteX + 27, spriteY + 14 + frameIndex, 3, COLOR_FG);
+      gfx.fillRect(spriteX + 28, spriteY + 20, 2, 11, spriteCaneColor());
+      gfx.drawPixel(spriteX + 27, spriteY + 19, spriteCaneColor());
+      gfx.drawPixel(spriteX + 29, spriteY + 19, spriteCaneColor());
+      gfx.drawPixel(spriteX + 30, spriteY + 20, spriteCaneColor());
+      gfx.fillRect(spriteX + 10, spriteY + 28, 12, 4, base);
+      break;
+  }
+}
+
+void drawCuteEye(Adafruit_GFX &gfx, int x, int y, uint8_t size, bool elderStyle) {
+  const uint8_t h = elderStyle ? (size + 1) : (size + 2);
+  gfx.fillRoundRect(x, y, size, h, 1, COLOR_BG);
+  if (size >= 3) gfx.drawPixel(x + 1, y, COLOR_FG);
+  else gfx.drawPixel(x, y, COLOR_FG);
+}
+
+void drawStageFace(Adafruit_GFX &gfx, uint8_t stageIndex, int spriteX, int spriteY, uint8_t frameIndex) {
+  const SpriteFaceLayout &face = FACE_LAYOUTS[stageIndex];
+  const int exL = spriteX + face.eyeLX;
+  const int exR = spriteX + face.eyeRX;
+  const int ey  = spriteY + face.eyeY + ((frameIndex && !pet.sleeping) ? 1 : 0);
+  const int my  = spriteY + face.mouthY + ((frameIndex && !pet.sleeping) ? 1 : 0);
+
+  if (stageIndex == 5) {
+    gfx.drawRect(exL - 2, ey - 1, 6, 5, COLOR_BG);
+    gfx.drawRect(exR - 2, ey - 1, 6, 5, COLOR_BG);
+    gfx.drawFastHLine(exL + 4, ey + 1, 3, COLOR_BG);
+  }
+
+  if (pet.sleeping) {
+    gfx.drawFastHLine(exL - 1, ey + 1, face.eyeSize + 2, COLOR_BG);
+    gfx.drawFastHLine(exR - 1, ey + 1, face.eyeSize + 2, COLOR_BG);
+    gfx.setCursor(spriteX + 23, spriteY + 4);
+    gfx.setTextColor(COLOR_ACCENT, COLOR_BG);
+    gfx.print("Z");
+  } else if (pet.sick) {
+    gfx.drawLine(exL - 1, ey - 1, exL + face.eyeSize, ey + face.eyeSize, COLOR_BG);
+    gfx.drawLine(exL + face.eyeSize, ey - 1, exL - 1, ey + face.eyeSize, COLOR_BG);
+    gfx.drawLine(exR - 1, ey - 1, exR + face.eyeSize, ey + face.eyeSize, COLOR_BG);
+    gfx.drawLine(exR + face.eyeSize, ey - 1, exR - 1, ey + face.eyeSize, COLOR_BG);
+  } else {
+    drawCuteEye(gfx, exL, ey, face.eyeSize, stageIndex == 5);
+    drawCuteEye(gfx, exR, ey, face.eyeSize, stageIndex == 5);
+  }
+
+  if (stageIndex == 5) {
+    gfx.drawLine(spriteX + 11, my - 1, spriteX + 14, my + 1, COLOR_FG);
+    gfx.drawLine(spriteX + 14, my + 1, spriteX + 16, my, COLOR_FG);
+    gfx.drawLine(spriteX + 21, my - 1, spriteX + 18, my + 1, COLOR_FG);
+    gfx.drawLine(spriteX + 18, my + 1, spriteX + 16, my, COLOR_FG);
+  }
+
+  if (pet.happiness > 55) {
+    gfx.drawLine(spriteX + face.mouthX,     my,     spriteX + face.mouthX + 3, my + 2, COLOR_BG);
+    gfx.drawLine(spriteX + face.mouthX + 3, my + 2, spriteX + face.mouthX + 6, my,     COLOR_BG);
+  } else if (pet.happiness > 25) {
+    gfx.drawFastHLine(spriteX + face.mouthX + 1, my + 1, 5, COLOR_BG);
+  } else {
+    gfx.drawLine(spriteX + face.mouthX,     my + 2, spriteX + face.mouthX + 3, my,     COLOR_BG);
+    gfx.drawLine(spriteX + face.mouthX + 3, my,     spriteX + face.mouthX + 6, my + 2, COLOR_BG);
+  }
+}
+
+void drawPoop(Adafruit_GFX &gfx, int x, int y) {
+  gfx.fillRoundRect(x, y, 8, 6, 2, COLOR_BROWN);
+  gfx.fillRoundRect(x + 2, y - 3, 5, 4, 2, COLOR_BROWN);
+}
+
+void renderPetAreaCommon(Adafruit_GFX &gfx, int originX, int originY) {
+  const int groundY = originY + PET_AREA_H - 8;
+  const uint8_t stageIndex = (pet.stage <= 5) ? pet.stage : 5;
+  const FastStageSpriteSet &set = FAST_STAGE_SPRITES[stageIndex];
+  const int spriteW = set.width;
+  const int spriteH = set.height;
+  const int spriteX = originX + ((PET_AREA_W - spriteW) / 2);
+  const int spriteY = groundY - spriteH;
+  const uint8_t frameIndex = pet.sleeping ? 0 : (animFrame & 0x01);
+
+  gfx.fillRect(originX, originY, PET_AREA_W, PET_AREA_H, COLOR_BG);
+  gfx.drawFastHLine(originX, groundY, PET_AREA_W, COLOR_DIM);
+  gfx.fillRect(originX, groundY + 1, PET_AREA_W, 7, rgb565(0, 18, 0));
+
+  if (!pet.alive) {
+    const int tombW = 20;
+    const int tombH = 24;
+    const int tombX = spriteX + ((spriteW - tombW) / 2);
+    const int tombY = spriteY + 5;
+
+    gfx.drawRoundRect(tombX, tombY, tombW, tombH, 5, COLOR_DIM);
+    gfx.drawLine(tombX + 4,  tombY + 7,  tombX + 8,  tombY + 11, COLOR_FG);
+    gfx.drawLine(tombX + 8,  tombY + 7,  tombX + 4,  tombY + 11, COLOR_FG);
+    gfx.drawLine(tombX + 12, tombY + 7,  tombX + 16, tombY + 11, COLOR_FG);
+    gfx.drawLine(tombX + 16, tombY + 7,  tombX + 12, tombY + 11, COLOR_FG);
+    gfx.drawFastHLine(tombX + 6, tombY + 17, 8, COLOR_FG);
+  } else {
+    const uint16_t bodyColor = spriteColorForStage(stageIndex);
+    gfx.drawBitmap(spriteX, spriteY, set.frames[frameIndex], set.width, set.height, bodyColor);
+    drawStageAccessories(gfx, stageIndex, spriteX, spriteY, frameIndex);
+    drawStageFace(gfx, stageIndex, spriteX, spriteY, frameIndex);
+  }
+
+  for (uint8_t i = 0; i < pet.poop; ++i) {
+    drawPoop(gfx, originX + 6 + (i * 12), originY + PET_AREA_H - 11);
+  }
 }
 
 String lastHud0 = "";
@@ -4017,22 +5001,11 @@ void clearPetArea() {
   }
 }
 
-void drawPoop(int x, int y) {
-  tft.fillRoundRect(x, y, 8, 6, 2, COLOR_BROWN);
-  tft.fillRoundRect(x + 2, y - 3, 5, 4, 2, COLOR_BROWN);
-}
-
 void drawPetSprite() {
   const int areaX = PET_AREA_X;
   const int areaY = PET_AREA_Y;
   const int areaW = PET_AREA_W;
   const int areaH = PET_AREA_H;
-
-  const int groundY = areaY + areaH - 8;
-  const int spriteW = 24;
-  const int spriteH = 24;
-  const int spriteX = PET_CX - (spriteW / 2);
-  const int spriteY = PET_CY - (spriteH / 2) - 2;
 
   const uint8_t stageIndex = (pet.stage <= 5) ? pet.stage : 5;
   const uint8_t frameIndex = pet.sleeping ? 0 : (animFrame & 0x01);
@@ -4049,85 +5022,24 @@ void drawPetSprite() {
 
   if (!redrawSprite && !redrawPoop && !redrawGround) return;
 
-  if (redrawGround) {
-    tft.fillRect(areaX, areaY, areaW, areaH, COLOR_BG);
-    tft.drawFastHLine(areaX, groundY, areaW, COLOR_DIM);
-    tft.fillRect(areaX, groundY + 1, areaW, 7, rgb565(0, 18, 0));
-    lastSpriteBaseHash = 1;
+  if (petCanvas && petCanvas->getBuffer()) {
+    petCanvas->fillScreen(COLOR_BG);
+    petCanvas->setTextWrap(false);
+    petCanvas->setTextSize(TEXT_SIZE);
+    renderPetAreaCommon(*petCanvas, 0, 0);
+
+    tft.startWrite();
+    tft.drawRGBBitmap(areaX, areaY, petCanvas->getBuffer(), areaW, areaH);
+    tft.endWrite();
+  } else {
+    renderPetAreaCommon(tft, areaX, areaY);
   }
 
-  if (redrawSprite) {
-    lastSpriteFaceHash = spriteHash;
-
-    tft.fillRect(spriteX - 1, spriteY - 1, spriteW + 2, spriteH + 2, COLOR_BG);
-    if (spriteY + spriteH >= groundY) {
-      const int overlapY = groundY;
-      const int overlapH = (spriteY + spriteH + 1) - groundY;
-      if (overlapH > 0) {
-        tft.drawFastHLine(spriteX - 1, overlapY, spriteW + 2, COLOR_DIM);
-        if (overlapH > 1) {
-          tft.fillRect(spriteX - 1, overlapY + 1, spriteW + 2, overlapH - 1, rgb565(0, 18, 0));
-        }
-      }
-    }
-
-    if (!pet.alive) {
-      tft.drawRoundRect(spriteX + 4, spriteY + 2, 16, 20, 5, COLOR_DIM);
-      tft.drawLine(spriteX + 7, spriteY + 8,  spriteX + 10, spriteY + 11, COLOR_FG);
-      tft.drawLine(spriteX + 10, spriteY + 8, spriteX + 7,  spriteY + 11, COLOR_FG);
-      tft.drawLine(spriteX + 14, spriteY + 8, spriteX + 17, spriteY + 11, COLOR_FG);
-      tft.drawLine(spriteX + 17, spriteY + 8, spriteX + 14, spriteY + 11, COLOR_FG);
-      tft.drawFastHLine(spriteX + 8, spriteY + 16, 8, COLOR_FG);
-    } else {
-      const FastStageSpriteSet &set = FAST_STAGE_SPRITES[stageIndex];
-      const uint16_t bodyColor = spriteColorForStage(stageIndex);
-
-      tft.drawBitmap(spriteX, spriteY, set.frames[frameIndex], set.width, set.height, bodyColor);
-
-      const int exL = spriteX + 8;
-      const int exR = spriteX + 15;
-      const int ey  = spriteY + 9 + ((frameIndex && !pet.sleeping) ? 1 : 0);
-      const int my  = spriteY + 15 + ((frameIndex && !pet.sleeping) ? 1 : 0);
-
-      if (pet.sleeping) {
-        tft.drawFastHLine(exL - 1, ey, 4, COLOR_BG);
-        tft.drawFastHLine(exR - 1, ey, 4, COLOR_BG);
-        tft.setCursor(spriteX + 18, spriteY + 1);
-        tft.setTextColor(COLOR_ACCENT, COLOR_BG);
-        tft.print("Z");
-      } else if (pet.sick) {
-        tft.drawLine(exL - 1, ey - 1, exL + 2, ey + 2, COLOR_BG);
-        tft.drawLine(exL + 2, ey - 1, exL - 1, ey + 2, COLOR_BG);
-        tft.drawLine(exR - 1, ey - 1, exR + 2, ey + 2, COLOR_BG);
-        tft.drawLine(exR + 2, ey - 1, exR - 1, ey + 2, COLOR_BG);
-      } else {
-        tft.fillRect(exL, ey, 2, 2, COLOR_BG);
-        tft.fillRect(exR, ey, 2, 2, COLOR_BG);
-      }
-
-      if (pet.happiness > 55) {
-        tft.drawLine(spriteX + 9,  my, spriteX + 12, my + 2, COLOR_BG);
-        tft.drawLine(spriteX + 12, my + 2, spriteX + 15, my, COLOR_BG);
-      } else if (pet.happiness > 25) {
-        tft.drawFastHLine(spriteX + 10, my + 1, 5, COLOR_BG);
-      } else {
-        tft.drawLine(spriteX + 9,  my + 2, spriteX + 12, my, COLOR_BG);
-        tft.drawLine(spriteX + 12, my,     spriteX + 15, my + 2, COLOR_BG);
-      }
-    }
-  }
-
-  if (redrawPoop) {
-    lastSpritePoop = pet.poop;
-    const int poopY = areaY + areaH - 12;
-    tft.fillRect(areaX + 4, poopY - 1, 40, 10, COLOR_BG);
-    tft.drawFastHLine(areaX, groundY, areaW, COLOR_DIM);
-    tft.fillRect(areaX, groundY + 1, areaW, 7, rgb565(0, 18, 0));
-    for (uint8_t i = 0; i < pet.poop; ++i) {
-      drawPoop(areaX + 6 + (i * 12), areaY + areaH - 11);
-    }
-  }
+  lastSpriteBaseHash = 1;
+  lastSpriteFaceHash = spriteHash;
+  lastSpritePoop = pet.poop;
 }
+
 
 void drawFooter() {
   String text = "/pet control";
@@ -4136,7 +5048,7 @@ void drawFooter() {
   tft.fillRect(0, FOOTER_Y, SCREEN_W, 10, COLOR_BG);
   tft.drawFastHLine(0, FOOTER_Y - 1, SCREEN_W, COLOR_DIM);
   tft.setCursor(4, FOOTER_Y);
-  tft.setTextColor(COLOR_ACCENT, COLOR_BG);
+  tft.setTextColor(COLOR_ACCENT);
   tft.print(text);
 }
 
@@ -4224,6 +5136,13 @@ void waitSplash(uint32_t ms) {
   }
 }
 
+void wipeTransition(uint16_t color) {
+  for (int x = 0; x < SCREEN_W; x += 4) {
+    tft.fillRect(x, 0, 4, SCREEN_H, color);
+    delay(2);
+    yield();
+  }
+}
 
 static void drawCenteredBitmap_P(const uint16_t* bmp, int w, int h, uint16_t bgColor) {
   tft.fillScreen(bgColor);
@@ -4254,25 +5173,80 @@ void drawMatrixMiniLogoPage() {
 
 void drawWelcomePage() {
   tft.fillScreen(COLOR_BG);
-  drawCenteredText(20, "WELCOME", COLOR_ACCENT, COLOR_BG);
-  drawCenteredText(44, "Lumia-connected", COLOR_FG, COLOR_BG);
-  drawCenteredText(56, "chat + control", COLOR_FG, COLOR_BG);
-  drawCenteredText(84, "Pico keys active", COLOR_DIM, COLOR_BG);
+  tft.fillRoundRect(8, 8, 144, 34, 8, COLOR_PANEL2);
+  tft.drawRoundRect(8, 8, 144, 34, 8, COLOR_ACCENT);
+  drawCenteredText(17, "LUMI-CON", COLOR_FG, COLOR_PANEL2);
+  drawCenteredText(29, "6x6 MATRIX MINI", COLOR_ACCENT, COLOR_PANEL2);
+
+  tft.fillRoundRect(14, 52, 132, 44, 7, COLOR_PANEL);
+  drawCenteredText(61, "CHAT + CONTROL", COLOR_FG, COLOR_PANEL);
+  drawCenteredText(76, "36 KEYS ONLINE", COLOR_GOOD, COLOR_PANEL);
+
+  tft.setCursor(8, 112);
+  tft.setTextColor(COLOR_DIM, COLOR_BG);
+  tft.print("firmware ");
+  tft.print(firmwareVersionDot());
+  tft.setCursor(112, 112);
+  tft.setTextColor(COLOR_ACCENT, COLOR_BG);
+  tft.print("READY");
 }
 
 void drawBootOptionsPage() {
   tft.fillScreen(COLOR_BG);
-  drawCenteredText(10, "BOOT OPTIONS", COLOR_ACCENT, COLOR_BG);
+  tft.fillRoundRect(4, 4, 152, 20, 6, COLOR_PANEL2);
+  drawCenteredText(10, "HOLD 0.9s TO SELECT", COLOR_ACCENT, COLOR_PANEL2);
 
-  tft.setTextColor(COLOR_FG, COLOR_BG);
-  tft.setCursor(8, 30);  tft.print("Hold K0  WiFi reset");
-  tft.setCursor(8, 46);  tft.print("Hold K2  noPet Debug");
-  tft.setCursor(8, 62);  tft.print("Default   Chat mode");
+  drawBootOptionRows(-1);
+  tft.drawRoundRect(8, 110, 144, 10, 4, COLOR_DIM);
+}
 
-  tft.drawFastHLine(8, 80, SCREEN_W - 16, COLOR_DIM);
-  tft.setCursor(8, 92);
-  tft.setTextColor(COLOR_DIM, COLOR_BG);
-  tft.print("Hidden boot actions active");
+void drawBootOptionRows(int8_t selectedKey) {
+  const char* labels[4] = {
+    "K0  WIFI (TOP LEFT)",
+    "K1  CHAT (TOP #2)",
+    "K2  DEBUG (TOP #3)",
+    "K35 PET (BOTTOM RIGHT)"
+  };
+  const uint8_t keys[4] = {
+    FACTORY_RESET_KEY,
+    CHAT_MODE_BOOT_KEY,
+    NOPET_DEBUG_BOOT_KEY,
+    PET_MODE_BOOT_KEY
+  };
+  const int ys[4] = {30, 49, 68, 87};
+
+  for (uint8_t i = 0; i < 4; ++i) {
+    const bool selected = selectedKey == (int8_t)keys[i];
+    const uint16_t selectedColor = keys[i] == FACTORY_RESET_KEY ? COLOR_GOLD : COLOR_ACCENT;
+    const uint16_t bg = selected ? selectedColor : COLOR_PANEL;
+    const uint16_t fg = selected ? COLOR_BG : (keys[i] == FACTORY_RESET_KEY ? COLOR_GOLD : COLOR_FG);
+
+    tft.fillRoundRect(8, ys[i], 144, 15, 4, bg);
+    if (!selected) tft.drawRoundRect(8, ys[i], 144, 15, 4, COLOR_PANEL2);
+    tft.setCursor(14, ys[i] + 4);
+    tft.setTextColor(fg, bg);
+    tft.print(labels[i]);
+  }
+}
+
+void drawBootSelection(int8_t selectedKey, uint8_t holdPercent, uint16_t remainingMs) {
+  tft.fillRect(0, 106, SCREEN_W, 22, COLOR_BG);
+  tft.drawRoundRect(8, 110, 144, 10, 4, selectedKey >= 0 ? COLOR_ACCENT : COLOR_DIM);
+  int fill = ((140 * holdPercent) / 100);
+  if (fill > 0) tft.fillRoundRect(10, 112, fill, 6, 3, selectedKey == 0 ? COLOR_GOLD : COLOR_ACCENT);
+
+  String right = String((remainingMs + 999) / 1000) + "s";
+  tft.setCursor(8, 121);
+  tft.setTextColor(selectedKey >= 0 ? COLOR_FG : COLOR_DIM, COLOR_BG);
+  if (selectedKey >= 0) {
+    tft.print("Holding K");
+    tft.print(selectedKey);
+  } else {
+    tft.print("Default: Chat");
+  }
+  int rx = SCREEN_W - ((int)right.length() * CHAR_W) - 4;
+  tft.setCursor(rx, 121);
+  tft.print(right);
 }
 
 // ============================================================================
@@ -4280,25 +5254,64 @@ void drawBootOptionsPage() {
 // ============================================================================
 
 void pushWrappedChat(const String& msgRaw) {
-  if (noPetModeActive()) {
-    insertTopWrappedMessageNoPet(msgRaw);
-    showTextPage(MESSAGE_PAGE_HOLD_MS);
-    return;
-  }
-  appendTextPageMessage(msgRaw);
+  insertTopWrappedMessageNoPet(msgRaw);
   showTextPage(MESSAGE_PAGE_HOLD_MS);
 }
 
 void handleRoot() {
-  server.send(200, "text/plain",
-    "Lumi-Con ESP Pet ACK OK\n"
-    "GET /msg?t=Hello\n"
-    "GET /status?t=OK\n"
-    "GET /clear\n"
-    "POST /ui {\"channel\":\"chat|status|clear\",\"text\":\"...\"}\n"
-    "GET /health\n"
-    "GET /pet?action=status|sync|feed|play|clean|sleep|med|toggleSleep|discipline|reset\n"
+  String html;
+  html.reserve(3600);
+  html = F(
+    "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
+    "<title>Lumi-Con 6x6 Mini</title><style>"
+    "*{box-sizing:border-box}body{margin:0;background:#07111b;color:#eef8ff;font-family:system-ui,sans-serif}"
+    "main{max-width:680px;margin:auto;padding:20px}.hero,.card{background:#0d2030;border:1px solid #17435b;border-radius:16px;padding:18px;margin-bottom:14px}"
+    "h1{font-size:1.5rem;margin:0 0 5px;color:#4ff}h2{font-size:1rem;margin:0 0 12px;color:#9debf5}"
+    ".meta{color:#9db4c4;font-size:.9rem}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}"
+    "button,a.btn{width:100%;border:1px solid #2a687d;border-radius:10px;background:#112d3d;color:#fff;padding:11px 8px;font-weight:700;text-decoration:none;text-align:center;cursor:pointer}"
+    "button:hover,a.btn:hover{background:#17465a}.gold{border-color:#c38b25;color:#ffd47d}.pink{border-color:#ad477c;color:#ff9bd0}"
+    "#result{min-height:1.2em;color:#76ff9b;margin-top:10px;font-size:.9rem}.links{display:flex;gap:12px;flex-wrap:wrap}.links a{color:#4ff}"
+    "@media(max-width:500px){.grid{grid-template-columns:1fr}.hero,.card{border-radius:12px}}"
+    "</style></head><body><main><section class='hero'><h1>Lumi-Con 6x6 Mini</h1><div class='meta'>Firmware "
   );
+  html += firmwareVersionDot();
+  html += F(" · ");
+  html += deviceId;
+  html += F("</div><p>IP <strong>");
+  html += WiFi.localIP().toString();
+  html += F("</strong> · Screen <strong>");
+  html += currentUiModeName();
+  html += F("</strong> · Lumia host <strong>");
+  html += pluginHost;
+  html += F(":");
+  html += String(PLUGIN_PORT);
+  html += F("</strong></p><div id='result'>Ready.</div></section>");
+
+  html += F(
+    "<section class='card'><h2>SCREEN MODE</h2><div class='grid'>"
+    "<button onclick=\"go('/mode?set=chat')\">Chat</button>"
+    "<button onclick=\"go('/mode?set=pet')\">Pet</button>"
+    "<button onclick=\"go('/mode?set=debug')\">Diagnostics</button>"
+    "</div></section>"
+    "<section class='card'><h2>TEST CELEBRATIONS</h2><div class='grid'>"
+    "<button onclick=\"go('/celebrate?style=confetti&text=NICE&color=teal&durationMs=1800')\">Confetti</button>"
+    "<button class='pink' onclick=\"go('/celebrate?style=pulse&text=HYPE&color=pink&durationMs=1800')\">Pulse</button>"
+    "<button class='gold' onclick=\"go('/celebrate?style=success&text=SUCCESS&color=green&durationMs=1800')\">Success</button>"
+    "</div></section>"
+    "<section class='card'><h2>DISPLAY TESTS</h2><div class='grid'>"
+    "<button onclick=\"go('/msg?t=Hello%20from%20Lumi-Con')\">Add Message</button>"
+    "<button onclick=\"go('/status?t=CONNECTED&color=green')\">Green Status</button>"
+    "<button onclick=\"go('/clear')\">Clear Feed</button>"
+    "</div></section>"
+    "<section class='card'><h2>DIAGNOSTICS</h2><div class='links'>"
+    "<a href='/health'>Health JSON</a><a href='/pet?action=status'>Pet JSON</a><a href='/plugin'>Plugin Host JSON</a>"
+    "</div></section>"
+    "<script>async function go(p){const r=document.getElementById('result');r.textContent='Sending...';"
+    "try{const x=await fetch(p,{cache:'no-store'});const t=await x.text();r.textContent=x.ok?'Done.':'Error: '+t;"
+    "if(p.indexOf('/mode')===0)setTimeout(()=>location.reload(),350)}catch(e){r.textContent='Device request failed.'}}</script>"
+    "</main></body></html>"
+  );
+  server.send(200, F("text/html"), html);
 }
 
 void handleMsg() {
@@ -4310,16 +5323,42 @@ void handleMsg() {
 }
 
 void handleStatus() {
-  if (!server.hasArg("t")) return server.send(400, "text/plain", "Missing 't'");
-  String text = urlDecode(server.arg("t"));
-  if (!text.length()) return server.send(400, "text/plain", "Empty");
-  if (noPetModeActive()) insertTopWrappedMessageNoPet(String("STATUS: ") + text);
-  else appendTextPageMessage(String("STATUS: ") + text);
-  showTextPage(MESSAGE_PAGE_HOLD_MS);
-  server.send(200, "text/plain", "OK");
+  const bool silent = server.hasArg("silent") && server.arg("silent") == "1";
+
+  if (!silent) {
+    Serial.println("/status requested");
+  }
+
+  String colorArg;
+  if (server.hasArg("color")) colorArg = urlDecode(server.arg("color"));
+  else if (server.hasArg("colour")) colorArg = urlDecode(server.arg("colour"));
+  else if (server.hasArg("c")) colorArg = urlDecode(server.arg("c"));
+
+  if (server.hasArg("t")) {
+    String text = urlDecode(server.arg("t"));
+    if (text.length()) {
+      insertTopWrappedMessageNoPet(formatStatusDisplayText(text), parseStatusColor(colorArg));
+      if (!silent) showTextPage(MESSAGE_PAGE_HOLD_MS);
+    }
+  }
+
+  String json = "{";
+  json += "\"ok\":true";
+  json += ",\"device_id\":\"" + deviceId + "\"";
+  json += ",\"device_ip\":\"" + WiFi.localIP().toString() + "\"";
+  json += ",\"device_rssi\":" + String(WiFi.RSSI());
+  json += ",\"seq\":" + String(seqCounter);
+  json += ",\"device_status_text\":\"Connected\"";
+  json += ",\"fw_version\":\"" + firmwareVersionDot() + "\"";
+  json += ",\"free_heap\":" + String(ESP.getFreeHeap());
+  json += "}";
+
+  server.sendHeader(F("Cache-Control"), F("no-store, no-cache, must-revalidate, max-age=0"));
+  server.send(200, "application/json", json);
 }
 
 void handleClear() {
+  celebrationActive = false;
   clearUiMessages();
   if (petModeEnabled()) renderPetUi(true);
   else renderTextPage(true);
@@ -4334,18 +5373,30 @@ void handleUi() {
 
   String channel = jsonFindString(body, "channel");
   String text = jsonFindString(body, "text");
+  String color = jsonFindString(body, "color");
+  if (!color.length()) color = jsonFindString(body, "colour");
 
   if (channel == "clear") {
+    celebrationActive = false;
     clearUiMessages();
     if (petModeEnabled()) renderPetUi(true);
     else renderTextPage(true);
     return server.send(200, "text/plain", "OK");
   }
 
+  if (channel == "celebrate") {
+    String style = jsonFindString(body, "style");
+    String duration = jsonFindString(body, "durationMs");
+    if (!style.length()) style = "confetti";
+    if (!text.length()) text = "NICE!";
+    startCelebration(text, style, parseCelebrationColor(color), parseCelebrationDuration(duration));
+    return server.send(200, "text/plain", "OK");
+  }
+
   if (!text.length()) return server.send(400, "text/plain", "Missing text");
 
   if (channel == "status") {
-    appendTextPageMessage(String("STATUS: ") + text);
+    insertTopWrappedMessageNoPet(formatStatusDisplayText(text), parseStatusColor(color));
     showTextPage(MESSAGE_PAGE_HOLD_MS);
     return server.send(200, "text/plain", "OK");
   }
@@ -4354,15 +5405,38 @@ void handleUi() {
   server.send(200, "text/plain", "OK");
 }
 
+void handleCelebrate() {
+  String text = server.hasArg("text") ? urlDecode(server.arg("text")) : "NICE!";
+  String style = server.hasArg("style") ? urlDecode(server.arg("style")) : "confetti";
+  String color = server.hasArg("color") ? urlDecode(server.arg("color")) : "teal";
+  String duration = server.hasArg("durationMs") ? urlDecode(server.arg("durationMs")) : "";
+  uint16_t durationMs = parseCelebrationDuration(duration);
+  startCelebration(text, style, parseCelebrationColor(color), durationMs);
+  String json = "{\"ok\":true,\"playing\":true,\"durationMs\":" + String(durationMs) + "}";
+  server.send(200, "application/json", json);
+}
+
+void handleMode() {
+  if (!server.hasArg("set")) {
+    String json = "{\"ok\":true,\"mode\":\"" + String(currentUiModeName()) + "\"}";
+    return server.send(200, "application/json", json);
+  }
+
+  String requested = urlDecode(server.arg("set"));
+  if (!setRuntimeUiMode(requested, true)) {
+    String json = "{\"ok\":false,\"error\":\"invalid_mode\",\"allowed\":[\"chat\",\"pet\",\"debug\"]}";
+    return server.send(400, "application/json", json);
+  }
+
+  String json = "{\"ok\":true,\"changed\":true,\"mode\":\"" + String(currentUiModeName()) + "\"}";
+  server.send(200, "application/json", json);
+}
+
 String petStatusJson() {
   String json;
   json.reserve(460);
   json = "{";
-  json += "\"uiMode\":\"";
-  if (uiMode == UI_MODE_PET) json += "pet";
-  else if (uiMode == UI_MODE_CHAT) json += "chat";
-  else json += "noPetDebug";
-  json += "\"";
+  json += "\"uiMode\":\"" + String(currentUiModeName()) + "\"";
   json += ",\"petModeEnabled\":" + String(petModeEnabled() ? "true" : "false");
   json += ",\"alive\":" + String(pet.alive ? "true" : "false");
   json += ",\"stage\":" + String(pet.stage);
@@ -4419,31 +5493,90 @@ void handlePet() {
     return server.send(400, "text/plain", "Unknown action");
   }
 
-  renderPetUi(false);
+  if (!celebrationActive) renderPetUi(false);
   server.send(200, "application/json", petStatusJson());
+}
+
+void handlePlugin() {
+  if (server.hasArg("clear")) {
+    resetPluginConfig();
+    setToast("Plugin host reset", 1600, COLOR_GOOD);
+    String json = "{";
+    json += "\"ok\":true";
+    json += ",\"changed\":true";
+    json += ",\"cleared\":true";
+    json += ",\"pluginHost\":\"" + pluginHost + "\"";
+    json += ",\"pluginPort\":" + String(PLUGIN_PORT);
+    json += "}";
+    return server.send(200, "application/json", json);
+  }
+
+  if (!server.hasArg("host")) {
+    String json = "{";
+    json += "\"ok\":true";
+    json += ",\"pluginHost\":\"" + pluginHost + "\"";
+    json += ",\"pluginPort\":" + String(PLUGIN_PORT);
+    json += ",\"usage\":\"/plugin?host=192.168.1.50\"";
+    json += "}";
+    return server.send(200, "application/json", json);
+  }
+
+  String requested = sanitizePluginHost(urlDecode(server.arg("host")));
+  if (!isValidPluginHost(requested)) {
+    String json = "{";
+    json += "\"ok\":false";
+    json += ",\"error\":\"invalid_host\"";
+    json += ",\"received\":\"" + requested + "\"";
+    json += ",\"pluginHost\":\"" + pluginHost + "\"";
+    json += ",\"hint\":\"Use an IPv4 address or local hostname, for example /plugin?host=192.168.1.50\"";
+    json += "}";
+    return server.send(400, "application/json", json);
+  }
+
+  pluginHost = requested;
+  savePluginConfig();
+  startCelebration("PLUGIN LINKED", "success", COLOR_GOOD);
+
+  String json = "{";
+  json += "\"ok\":true";
+  json += ",\"changed\":true";
+  json += ",\"pluginHost\":\"" + pluginHost + "\"";
+  json += ",\"pluginPort\":" + String(PLUGIN_PORT);
+  json += "}";
+  server.send(200, "application/json", json);
 }
 
 void handleHealth() {
   String ip = WiFi.localIP().toString();
   long rssi = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
+  
+  uint32_t up = millis() / 1000;
+  uint32_t secs = up % 60;
+  uint32_t mins = (up / 60) % 60;
+  uint32_t hrs = (up / 3600) % 24;
+  uint32_t days = (up / 86400);
+  
+  char uptimeStr[32];
+  snprintf(uptimeStr, sizeof(uptimeStr), "%ud %02uh %02um %02us", days, hrs, mins, secs);
+
   String json;
-  json.reserve(340);
+  json.reserve(400);
   json = "{";
   json += "\"ok\":true";
   json += ",\"deviceId\":\"" + deviceId + "\"";
   json += ",\"mode\":\"ack\"";
   json += ",\"ip\":\"" + ip + "\"";
   json += ",\"rssi\":" + String(rssi);
+  json += ",\"freeHeap\":" + String(ESP.getFreeHeap());
   json += ",\"uptimeMs\":" + String(millis());
+  json += ",\"uptime\":\"" + String(uptimeStr) + "\"";
   json += ",\"lastKey\":\"" + lastKeyText + "\"";
   json += ",\"lastSeq\":" + String(lastSeqSent);
   json += ",\"lastAck\":" + String(lastAckSeq);
   json += ",\"lastPostOk\":" + String(lastPostOk ? "true" : "false");
-  json += ",\"uiMode\":\"";
-  if (uiMode == UI_MODE_PET) json += "pet";
-  else if (uiMode == UI_MODE_CHAT) json += "chat";
-  else json += "noPetDebug";
-  json += "\"";
+  json += ",\"pluginHost\":\"" + pluginHost + "\"";
+  json += ",\"pluginPort\":" + String(PLUGIN_PORT);
+  json += ",\"uiMode\":\"" + String(currentUiModeName()) + "\"";
   json += ",\"petModeEnabled\":" + String(petModeEnabled() ? "true" : "false");
   json += ",\"petAlive\":" + String(pet.alive ? "true" : "false");
   json += ",\"petStage\":" + String(pet.stage);
@@ -4474,35 +5607,135 @@ void ensureWiFi(uint32_t now) {
 
 void drawBootSplash(const char* msg) {
   tft.fillScreen(COLOR_BG);
-  tft.fillRect(12, 16, 136, 28, COLOR_ACCENT);
-  tft.setCursor(20, 24);
-  tft.setTextColor(COLOR_BG, COLOR_ACCENT);
-  tft.print("LUMI-CON PET");
-  tft.setCursor(18, 56);
-  tft.setTextColor(COLOR_FG, COLOR_BG);
-  tft.print(msg);
-  tft.drawRoundRect(20, 78, 120, 26, 6, COLOR_DIM);
-  tft.setCursor(34, 87);
-  tft.print("LUMIA CONTROL");
+  tft.fillRoundRect(8, 10, 144, 30, 8, COLOR_PANEL2);
+  tft.drawRoundRect(8, 10, 144, 30, 8, COLOR_ACCENT);
+  drawCenteredText(21, F("LUMI-CON 6x6"), COLOR_FG, COLOR_PANEL2);
+  tft.fillRoundRect(16, 54, 128, 42, 7, COLOR_PANEL);
+  drawCenteredText(70, String(msg), COLOR_ACCENT, COLOR_PANEL);
+  drawCenteredText(112, F("PLEASE WAIT"), COLOR_DIM, COLOR_BG);
 }
 
 void onWiFiConfigMode(WiFiManager *wm) {
   (void)wm;
-  drawBootSplash("Phone setup");
+  tft.fillScreen(COLOR_BG);
+  tft.setTextSize(TEXT_SIZE);
+  tft.setTextWrap(true);
+
+  drawCenteredText(5, F("WIFI SETUP"), COLOR_ACCENT, COLOR_BG);
+  tft.fillRoundRect(12, 18, 136, 20, 6, COLOR_GOLD);
+  drawCenteredText(24, F("USE YOUR MOBILE PHONE"), COLOR_BG, COLOR_GOLD);
+
+  tft.setCursor(5, 47);
+  tft.setTextColor(COLOR_FG, COLOR_BG);
+  tft.print(F("1 Phone Wi-Fi:"));
+  tft.setCursor(12, 59);
+  tft.setTextColor(COLOR_ACCENT, COLOR_BG);
+  tft.print(F("Lumi-Con-Setup"));
+
+  tft.setCursor(5, 78);
+  tft.setTextColor(COLOR_FG, COLOR_BG);
+  tft.print(F("2 Tap sign-in popup"));
+  tft.setCursor(12, 90);
+  tft.setTextColor(COLOR_DIM, COLOR_BG);
+  tft.print(F("or phone browser:"));
+  tft.setCursor(12, 102);
+  tft.setTextColor(COLOR_ACCENT, COLOR_BG);
+  tft.print(F("192.168.4.1"));
+
+  tft.setCursor(5, 119);
+  tft.setTextColor(COLOR_BAD, COLOR_BG);
+  tft.print(F("No desktop browser"));
+
+  tft.setTextWrap(false);
 }
 
-void fullUiInit() {
+void drawNetworkResultPage(bool connected) {
   tft.fillScreen(COLOR_BG);
+  const uint16_t accent = connected ? COLOR_GOOD : COLOR_BAD;
+
+  tft.fillRoundRect(8, 10, 144, 30, 8, COLOR_PANEL2);
+  tft.drawRoundRect(8, 10, 144, 30, 8, accent);
+  drawCenteredText(21, connected ? F("WIFI CONNECTED") : F("WIFI OFFLINE"), accent, COLOR_PANEL2);
+
+  tft.fillRoundRect(12, 52, 136, 50, 8, COLOR_PANEL);
+  if (connected) {
+    drawCenteredText(60, F("CONTROLLER ADDRESS"), COLOR_DIM, COLOR_PANEL);
+    drawCenteredText(76, WiFi.localIP().toString(), COLOR_FG, COLOR_PANEL);
+    drawCenteredText(112, String("MODE: ") + currentUiModeName(), COLOR_ACCENT, COLOR_BG);
+  } else {
+    drawCenteredText(59, F("SETUP TIMED OUT"), COLOR_FG, COLOR_PANEL);
+    drawCenteredText(74, F("REBOOT + HOLD K0"), COLOR_GOLD, COLOR_PANEL);
+    drawCenteredText(88, F("THEN USE YOUR PHONE"), COLOR_DIM, COLOR_PANEL);
+    drawCenteredText(112, F("KEYS STILL OPERATE"), COLOR_ACCENT, COLOR_BG);
+  }
+}
+
+void fullUiInit(bool resetFeed) {
   lastDrawLine1 = "__force__";
   lastDrawLine2 = "__force__";
 
   if (petModeEnabled()) {
-    updateHeaderLine1(true);
-    updateHeaderLine2(true);
-    renderPetUi(true);
+    if (textPageActive) {
+      renderTextPage(true);
+    } else {
+      updateHeaderLine1(true);
+      updateHeaderLine2(true);
+      renderPetUi(true);
+    }
   } else {
-    refreshNoPetPage(true);
+    refreshNoPetPage(resetFeed || textPageLineCount == 0);
   }
+}
+
+bool setRuntimeUiMode(const String& requestedMode, bool showFeedback) {
+  String mode = requestedMode;
+  mode.trim();
+  mode.toLowerCase();
+
+  UiMode nextMode;
+  const char* feedbackText;
+  uint16_t feedbackColor;
+  const char* feedbackStyle;
+
+  if (mode == "chat") {
+    nextMode = UI_MODE_CHAT;
+    feedbackText = "CHAT MODE";
+    feedbackColor = COLOR_ACCENT;
+    feedbackStyle = "success";
+  } else if (mode == "pet") {
+    nextMode = UI_MODE_PET;
+    feedbackText = "PET MODE";
+    feedbackColor = COLOR_PINK;
+    feedbackStyle = "pulse";
+  } else if (mode == "debug" || mode == "diagnostics" || mode == "nopetdebug") {
+    nextMode = UI_MODE_NOPET_DEBUG;
+    feedbackText = "DEBUG MODE";
+    feedbackColor = COLOR_GOLD;
+    feedbackStyle = "success";
+  } else {
+    return false;
+  }
+
+  celebrationActive = false;
+  uiMode = nextMode;
+  textPageActive = false;
+  textPageUntilMs = 0;
+
+  const uint32_t now = millis();
+  pet.lastSimMs = now;
+  lastGameTickMs = now;
+  lastAnimTickMs = now;
+  lastStatusRotateMs = now;
+  lastNoPetHeaderToken = 0;
+  lastNoPetBodyToken = 0;
+  lastTextPageDrawToken = 0;
+
+  if (showFeedback) {
+    startCelebration(feedbackText, feedbackStyle, feedbackColor, 1200);
+  } else {
+    fullUiInit(false);
+  }
+  return true;
 }
 
 // ============================================================================
@@ -4523,12 +5756,16 @@ void setup() {
 
   SPI.begin();
   tft.initR(ST7735_TAB);
+  tft.setSPISpeed(DISPLAY_SPI_HZ);
   tft.setRotation(3);
   tft.setTextWrap(false);
   tft.setTextSize(TEXT_SIZE);
   tft.setTextColor(COLOR_FG, COLOR_BG);
 
+  initPetCanvas();
+
   EEPROM.begin(EEPROM_BYTES);
+  loadPluginConfig();
   if (!loadPet()) {
     resetPet(true);
     savePetNow();
@@ -4541,43 +5778,50 @@ void setup() {
   // 1) logo 1 (lumicon)
   // 2) logo 2 (6x6 matrix mini)
   // 3) welcome
-  // 4) run mode
+  // 4) visible boot options
+  // 5) Wi-Fi / run mode
   drawLumiconLogoPage();
   waitSplash(SPLASH_LUMICON_MS);
+  wipeTransition(COLOR_BG);
 
   drawMatrixMiniLogoPage();
   waitSplash(SPLASH_MATRIX_MS);
+  wipeTransition(COLOR_BG);
 
   drawWelcomePage();
   waitSplash(SPLASH_WELCOME_MS);
+  wipeTransition(COLOR_BG);
 
   BootMode bootMode = detectBootMode();
+  const bool forcePhoneSetup = bootMode == BOOT_MODE_WIFI_RESET;
 
-  if (bootMode == BOOT_MODE_WIFI_RESET) {
-    drawBootSplash("WiFi reset");
-    WiFiManager wm;
-    wm.setDebugOutput(false);
-    wm.resetSettings();
-    delay(200);
-    ESP.restart();
+  if (forcePhoneSetup) {
+    drawBootSplash("Clearing WiFi");
+    WiFiManager resetManager;
+    resetManager.setDebugOutput(false);
+    resetManager.resetSettings();
+    waitSplash(450);
   }
 
   if (bootMode == BOOT_MODE_PET) {
     uiMode = UI_MODE_PET;
   } else if (bootMode == BOOT_MODE_NOPET_DEBUG) {
     uiMode = UI_MODE_NOPET_DEBUG;
+  } else if (bootMode == BOOT_MODE_CHAT) {
+    uiMode = UI_MODE_CHAT;
   } else {
     uiMode = UI_MODE_CHAT;
   }
 
   WiFiManager wm;
   wm.setDebugOutput(false);
+  wm.setTitle("Lumi-Con 6x6");
+  wm.setDarkMode(true);
   wm.setAPCallback(onWiFiConfigMode);
   wm.setConfigPortalTimeout(180);
+
+  drawBootSplash(forcePhoneSetup ? "Phone setup" : "Connecting WiFi");
   bool ok = wm.autoConnect("Lumi-Con-Setup");
-  if (!ok) {
-    setToast("Portal timeout", 2000);
-  }
 
   if (WiFi.status() == WL_CONNECTED) {
     headerStatusBase = "IP:" + WiFi.localIP().toString();
@@ -4585,30 +5829,43 @@ void setup() {
     headerStatusBase = "WiFi:DOWN";
   }
 
+  drawNetworkResultPage(ok && WiFi.status() == WL_CONNECTED);
+  waitSplash(ok && WiFi.status() == WL_CONNECTED ? 900 : 1500);
+
   server.on("/", HTTP_GET, handleRoot);
   server.on("/msg", HTTP_GET, handleMsg);
   server.on("/status", HTTP_GET, handleStatus);
   server.on("/clear", HTTP_GET, handleClear);
   server.on("/ui", HTTP_POST, handleUi);
   server.on("/health", HTTP_GET, handleHealth);
+  server.on("/plugin", HTTP_GET, handlePlugin);
   server.on("/pet", HTTP_GET, handlePet);
+  server.on("/celebrate", HTTP_GET, handleCelebrate);
+  server.on("/mode", HTTP_GET, handleMode);
   server.begin();
 
   lastGameTickMs = millis();
   lastAnimTickMs = millis();
   lastStatusRotateMs = millis();
 
-  fullUiInit();
-
-  if (petModeEnabled()) {
-    setToast("Ready", 1400);
+  if (WiFi.status() == WL_CONNECTED) {
+    startCelebration("READY", "success", COLOR_GOOD);
   } else {
-    refreshNoPetPage(true);
+    fullUiInit(true);
+    if (petModeEnabled()) setToast("Ready", 1400);
   }
 }
 
 void servicePetTiming(uint32_t now) {
-  if (!petModeEnabled()) return;
+  if (!petModeEnabled()) {
+    // Keep timing variables synced to prevent massive time deltas 
+    // from accumulating while the pet is paused in Chat mode.
+    pet.lastSimMs = now;
+    lastGameTickMs = now;
+    lastAnimTickMs = now;
+    lastStatusRotateMs = now;
+    return;
+  }
 
   if (elapsedMs(now, lastGameTickMs) >= GAME_TICK_MS) {
     lastGameTickMs += GAME_TICK_MS;
@@ -4617,14 +5874,16 @@ void servicePetTiming(uint32_t now) {
   }
 
   if (elapsedMs(now, lastAnimTickMs) >= ANIM_TICK_MS) {
-    lastAnimTickMs += ANIM_TICK_MS;
+    // Drop missed frames after network stalls instead of replaying them in a
+    // burst, which otherwise looks like a freeze followed by a rapid jump.
+    lastAnimTickMs = now;
     animFrame = (animFrame + 1) & 0x03;
     if (!textPageActive) drawPetSprite();
   }
 
   if (elapsedMs(now, lastStatusRotateMs) >= STATUS_ROTATE_MS) {
     lastStatusRotateMs += STATUS_ROTATE_MS;
-    statusPage = (statusPage + 1) % 3;
+    statusPage = (statusPage + 1) % 4;
     if (!textPageActive) drawHudAndBars();
   }
 }
@@ -4633,6 +5892,29 @@ void servicePicoEvents() {
   uint8_t type, key;
   while (readPicoPacket(type, key)) {
     picoSeen = true;
+
+    // Intercept special packets from secondary device
+    // 0xA5 0xFE 0x01 <chk>: Enter LCD Only Mode
+    if (type == 0xFE && key == 0x01) {
+      if (uiMode != UI_MODE_LCD_ONLY) {
+        uiMode = UI_MODE_LCD_ONLY;
+        clearUiMessages();
+        if (!celebrationActive) renderPetUi(true);
+        setToast("LCD Only Mode", 1500, COLOR_ACCENT);
+      }
+      transmitPetStatusSerial();
+      continue;
+    }
+
+    // 0xA5 0xFE 0x02 <chk>: Force request pet status broadcast
+    if (type == 0xFE && key == 0x02) {
+      transmitPetStatusSerial();
+      continue;
+    }
+
+    // In LCD Only Mode, normal keypad events are ignored
+    if (uiMode == UI_MODE_LCD_ONLY) continue;
+
     if (key >= KEY_COUNT) continue;
 
     uint32_t now = millis();
@@ -4654,7 +5936,7 @@ void servicePicoEvents() {
     const char* pressKind = isLongPress ? "long" : "short";
 
     lastKeyText = String("K:") + String(key) + (isLongPress ? "L" : "S");
-    if (petModeEnabled()) updateHeaderLine2(true);
+    if (!celebrationActive && petModeEnabled()) updateHeaderLine2(true);
 
     seqCounter++;
     uint32_t seq = seqCounter;
@@ -4672,12 +5954,33 @@ void servicePicoEvents() {
       setToast("ACK FAIL", 2600, COLOR_BAD);
     }
 
-    if (uiMode == UI_MODE_NOPET_DEBUG) {
-      appendTextPageMessage(String("KEY ") + String(key) + (isLongPress ? " long" : " short") + (ok ? " ok" : " fail"));
-      renderTextPage(true);
-    } else if (uiMode == UI_MODE_CHAT) {
-      renderTextPage(true);
+    if (!celebrationActive) {
+      if (uiMode == UI_MODE_NOPET_DEBUG) {
+        insertTopWrappedMessageNoPet(String("KEY ") + String(key) + (isLongPress ? " long" : " short") + (ok ? " ok" : " fail"));
+        renderTextPage(true);
+      } else if (uiMode == UI_MODE_CHAT) {
+        renderNoPetHeader(false);
+      }
     }
+  }
+}
+
+void serviceLongPressIndicator(uint32_t now) {
+  bool active = false;
+  for (uint8_t i = 0; i < KEY_COUNT; ++i) {
+    if (isDown[i] && elapsedMs(now, pressStart[i]) >= LONG_PRESS_MS) {
+      active = true;
+      break;
+    }
+  }
+
+  if (active == longPressVisualActive) return;
+  longPressVisualActive = active;
+
+  if (petModeEnabled()) {
+    updateHeaderLine1(true);
+  } else {
+    renderNoPetHeader(true);
   }
 }
 
@@ -4686,13 +5989,25 @@ void loop() {
 
   server.handleClient();
   serviceLed(now);
-  updateTransientStatus(now);
-  serviceTextPage(now);
   ensureWiFi(now);
   servicePicoEvents();
-  servicePetTiming(now);
   servicePetTransitionQueue(now);
   serviceSave(now);
+
+  // Request handling and HTTP event delivery can block briefly. All display
+  // deadlines below must use the current time, not the pre-request snapshot.
+  now = millis();
+
+  if (celebrationActive) {
+    serviceCelebration(now);
+    yield();
+    return;
+  }
+
+  updateTransientStatus(now);
+  serviceTextPage(now);
+  serviceLongPressIndicator(now);
+  servicePetTiming(now);
 
   yield();
 }
